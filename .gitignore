@@ -1,0 +1,23 @@
+# Build output — GitHub Actions builds this from source on every push.
+dist/
+dev-dist/
+
+node_modules/
+.DS_Store
+*.log
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# ---------------------------------------------------------------------------
+# YOUR FINANCIAL RECORDS — never commit these.
+# The repo is what gets published; the ledger is not part of it. Spreadsheets
+# and exported backups stay on your machine.
+# ---------------------------------------------------------------------------
+*.xlsx
+*.xls
+*.ods
+*.csv
+construction-expenses-*.json

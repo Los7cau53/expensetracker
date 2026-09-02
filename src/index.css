@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #14181f;
+  --color-muted: #6b7280;
+  --color-line: #e5e7eb;
+  --color-surface: #ffffff;
+  --color-ground: #f6f7f9;
+  --color-accent: #1f6feb;
+  --color-out: #b42318;
+  --color-in: #067647;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  /* Keep content clear of the iOS home indicator and the bottom tab bar. */
+  overscroll-behavior-y: contain;
+}
+
+/* Numeric columns line up only with tabular figures. */
+.tnum { font-variant-numeric: tabular-nums; }
