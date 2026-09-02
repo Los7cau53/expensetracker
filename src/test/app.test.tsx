@@ -427,3 +427,26 @@ describe('backup card urgency', () => {
     expect(await screen.findByText(/You have never taken a backup/)).toBeTruthy()
   })
 })
+
+describe('negative money rendering', () => {
+  it('never breaks between the minus sign and the digits', async () => {
+    const [projects, sources, categories] = await Promise.all([
+      db.projects.toArray(),
+      db.sources.toArray(),
+      db.categories.toArray(),
+    ])
+    // An overdrawn source: opening 0, one payment out.
+    await db.txns.add({
+      date: '2026-03-01', amount: 35_000_00, projectId: projects[0].id,
+      sourceId: sources[0].id, categoryId: categories[0].id,
+      voided: 0, createdAt: 1, updatedAt: 1,
+    } as never)
+
+    renderApp(`/sources/${sources[0].id}`)
+    await screen.findByRole('heading', { name: 'Cash in hand' })
+
+    const negative = await screen.findByText('-₹35,000.00')
+    // A wrapped minus sign reads as a dash above a positive figure.
+    expect(negative.className).toContain('whitespace-nowrap')
+  })
+})

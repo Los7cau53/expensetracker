@@ -69,7 +69,7 @@ one you export from next.
 | **Properties** | What has each property cost, split by cost head, source and month |
 | **Ledger** | Every entry, filterable; reassign payee/source/cost head, or void |
 | **Add** | The hot path — one screen, one-handed, sticky property/source/cost head |
-| **Sources** | How much came into each source, how much went out, what is left |
+| **Sources** | How much came into each source, how much went out, what is left; edit, archive, merge or delete one |
 | **Payees** | How much each person or supplier has been given, per property |
 | **Data** | Backup, restore, Excel import |
 
@@ -205,6 +205,27 @@ Payee roles and source types are inferred from names (`src/lib/infer.ts`), and
 the same inference runs on manual entry, so typing "Ramesh mestri" tags them a
 mestri without being asked.
 
+## Managing sources
+
+Open a source to rename it, correct the type the importer guessed, set its
+institution and opening balance, or deal with it entirely:
+
+- **Archive** — hides it when recording a payment but leaves every historical
+  row pointing at it, so past reports are unchanged. For an account you have
+  stopped using.
+- **Merge into another source** — the one that matters after an import. A sheet
+  spelling an account two ways (`sbi 4471` and `SBI 4471`) produces two sources
+  for one real account; merging moves every payment and inflow across, adds the
+  opening balances together, and deletes the emptied one. The combined balance
+  is asserted to equal the sum of the two it replaces.
+- **Delete** — refused while anything still points at the source, because a
+  dangling `sourceId` would leave payments belonging to no account and silently
+  break every balance. It also refuses to remove your last remaining source.
+
+Renaming is blocked only when the new name collides with a *different* source.
+An import can leave two spellings of one account already colliding; checking
+unconditionally would lock both out of every edit, including fixing their type.
+
 ## Cleaning up imported history
 
 Hand-kept sheets usually mix the fund source and the purpose into one
@@ -232,6 +253,8 @@ npm test
 - `src/lib/excelImport.test.ts` — including fixtures modelled on real sheet
   shapes: no headers, reversed column order, embedded totals, a missing date
   column, a reversal row
+- `src/db/manage.test.ts` — editing, archiving, merging and deleting sources,
+  including the invariant that a merge preserves the combined balance exactly
 - `src/db/summary.test.ts` — the dashboard's aggregation: netting reversals,
   ignoring voided rows, a continuous month axis, magnitude-ranked tails, and
   every breakdown reconciling to the same total

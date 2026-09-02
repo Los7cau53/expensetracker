@@ -1,11 +1,19 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { Button, Card, Empty, Field, Money, Screen, Stat, TextInput } from '../components/ui'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Button, Card, Empty, Field, Money, Screen, Select, Stat, TextInput } from '../components/ui'
 import { sum } from '../db/queries'
-import { db } from '../db/schema'
+import {
+  deleteSource,
+  mergeSources,
+  mergeTargets,
+  setSourceArchived,
+  sourceUsage,
+  updateSource,
+} from '../db/manage'
+import { db, SOURCE_TYPES, type Source, type SourceType } from '../db/schema'
 import { formatDate, todayStr } from '../lib/date'
-import { parseAmountToPaise } from '../lib/money'
+import { formatPaise, parseAmountToPaise } from '../lib/money'
 
 /**
  * A running statement for one source: opening balance, every rupee in, every
@@ -14,7 +22,11 @@ import { parseAmountToPaise } from '../lib/money'
  */
 export default function SourceDetail() {
   const id = Number(useParams().id)
+  const navigate = useNavigate()
   const [addingFunds, setAddingFunds] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [status, setStatus] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const source = useLiveQuery(() => db.sources.get(id), [id])
   const fundIns = useLiveQuery(() => db.fundIns.where('sourceId').equals(id).toArray(), [id], [])
@@ -25,6 +37,8 @@ export default function SourceDetail() {
   )
   const payees = useLiveQuery(() => db.payees.toArray(), [], [])
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
+  const usage = useLiveQuery(() => sourceUsage(id), [id])
+  const targets = useLiveQuery(() => mergeTargets(id), [id], [])
 
   if (!source) return <Screen title="Source"><Empty title="Source not found" /></Screen>
 
@@ -54,8 +68,8 @@ export default function SourceDetail() {
     <Screen
       title={source.name}
       action={
-        <Button variant="secondary" onClick={() => setAddingFunds((v) => !v)}>
-          {addingFunds ? 'Cancel' : 'Add funds in'}
+        <Button variant="secondary" onClick={() => setEditing((v) => !v)}>
+          {editing ? 'Cancel' : 'Edit'}
         </Button>
       }
     >
@@ -66,9 +80,32 @@ export default function SourceDetail() {
           <Stat label="Balance" value={<Money paise={balance} />} />
         </div>
 
+        {editing && (
+          <EditSourceForm
+            source={source}
+            onDone={(msg) => {
+              setEditing(false)
+              setStatus(msg)
+              setError(null)
+            }}
+            onError={setError}
+          />
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setAddingFunds((v) => !v)}>
+            {addingFunds ? 'Cancel' : 'Add funds in'}
+          </Button>
+        </div>
+
         {addingFunds && <FundInForm sourceId={id} onDone={() => setAddingFunds(false)} />}
 
-        <OpeningBalanceEditor sourceId={id} current={source.openingBalance} />
+        {status && (
+          <p className="rounded-lg bg-in/10 px-3 py-2 text-sm font-medium text-in">{status}</p>
+        )}
+        {error && (
+          <p className="rounded-lg bg-out/10 px-3 py-2 text-sm font-medium text-out">{error}</p>
+        )}
 
         {lines.length === 0 ? (
           <Empty title="Nothing recorded against this source yet" />
@@ -91,6 +128,18 @@ export default function SourceDetail() {
             ))}
           </Card>
         )}
+
+        <ManageSource
+          source={source}
+          usage={usage}
+          targets={targets}
+          onDone={(msg) => {
+            setStatus(msg)
+            setError(null)
+          }}
+          onError={setError}
+          onDeleted={() => navigate('/sources')}
+        />
 
         <Link to="/sources" className="block px-1 text-sm text-accent">
           ← All sources
@@ -144,34 +193,213 @@ function FundInForm({ sourceId, onDone }: { sourceId: number; onDone: () => void
   )
 }
 
-function OpeningBalanceEditor({ sourceId, current }: { sourceId: number; current: number }) {
-  const [value, setValue] = useState('')
-  const [open, setOpen] = useState(false)
+function EditSourceForm({
+  source,
+  onDone,
+  onError,
+}: {
+  source: Source
+  onDone: (msg: string) => void
+  onError: (msg: string) => void
+}) {
+  const [name, setName] = useState(source.name)
+  const [type, setType] = useState<SourceType>(source.type)
+  const [institution, setInstitution] = useState(source.institution ?? '')
+  const [opening, setOpening] = useState((source.openingBalance / 100).toString())
+  const [notes, setNotes] = useState(source.notes ?? '')
 
   async function save() {
-    const paise = parseAmountToPaise(value)
-    if (paise === null) return
-    await db.sources.update(sourceId, { openingBalance: paise })
-    setOpen(false)
-    setValue('')
-  }
-
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)} className="px-1 text-sm text-accent">
-        Opening balance: <Money paise={current} /> — change
-      </button>
-    )
+    const paise = parseAmountToPaise(opening)
+    if (paise === null) {
+      onError('Opening balance is not a valid amount.')
+      return
+    }
+    try {
+      await updateSource(source.id, {
+        name,
+        type,
+        institution,
+        openingBalance: paise,
+        notes,
+      })
+      onDone('Source updated.')
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not save.')
+    }
   }
 
   return (
     <Card className="space-y-3 p-4">
-      <Field label="Opening balance" hint="What sat in this source before you started tracking.">
-        <TextInput inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} autoFocus placeholder={String(current / 100)} />
+      <Field label="Name">
+        <TextInput value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       </Field>
-      <div className="flex gap-2">
-        <Button onClick={() => void save()}>Save</Button>
-        <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Type" hint="The importer guesses this; correct it here.">
+          <Select value={type} onChange={(e) => setType(e.target.value as SourceType)}>
+            {SOURCE_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Institution">
+          <TextInput
+            value={institution}
+            onChange={(e) => setInstitution(e.target.value)}
+            placeholder="SBI, HDFC, GPay"
+          />
+        </Field>
+      </div>
+      <Field label="Opening balance" hint="What sat here before you started tracking.">
+        <TextInput inputMode="decimal" value={opening} onChange={(e) => setOpening(e.target.value)} />
+      </Field>
+      <Field label="Notes">
+        <TextInput value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
+      </Field>
+      <Button onClick={() => void save()} disabled={!name.trim()}>
+        Save changes
+      </Button>
+    </Card>
+  )
+}
+
+/**
+ * Archive, merge, delete. Merge is the one that matters after an import: a
+ * sheet that spells an account two ways produces two sources for one real
+ * account, and only merging puts the history back together.
+ */
+function ManageSource({
+  source,
+  usage,
+  targets,
+  onDone,
+  onError,
+  onDeleted,
+}: {
+  source: Source
+  usage?: { txnCount: number; fundInCount: number; inUse: boolean }
+  targets: Source[]
+  onDone: (msg: string) => void
+  onError: (msg: string) => void
+  onDeleted: () => void
+}) {
+  const [mergeInto, setMergeInto] = useState<number | ''>('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const target = targets.find((t) => t.id === mergeInto)
+
+  async function doMerge() {
+    if (typeof mergeInto !== 'number') return
+    try {
+      const r = await mergeSources(source.id, mergeInto)
+      onDone(
+        `Merged into ${target?.name}: moved ${r.movedTxns} payments and ${r.movedFundIns} inflows.`,
+      )
+      onDeleted()
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Merge failed.')
+    }
+  }
+
+  async function doDelete() {
+    try {
+      await deleteSource(source.id)
+      onDone('Source deleted.')
+      onDeleted()
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not delete.')
+      setConfirmDelete(false)
+    }
+  }
+
+  return (
+    <Card className="space-y-4 p-4">
+      <h2 className="text-sm font-semibold">Manage this source</h2>
+
+      <div>
+        <Button
+          variant="secondary"
+          onClick={() =>
+            void setSourceArchived(source.id, !source.archived).then(() =>
+              onDone(source.archived ? 'Source restored.' : 'Source archived.'),
+            )
+          }
+        >
+          {source.archived ? 'Restore' : 'Archive'}
+        </Button>
+        <p className="mt-1 text-xs text-muted">
+          {source.archived
+            ? 'Archived: hidden when recording a payment, but its history is intact.'
+            : 'Hides it when recording a payment. Nothing is lost and past reports are unchanged.'}
+        </p>
+      </div>
+
+      {targets.length > 0 && (
+        <div>
+          <Field
+            label="Merge into another source"
+            hint="Moves every payment and inflow across, adds the opening balances together, then removes this one."
+          >
+            <Select
+              value={mergeInto}
+              onChange={(e) => setMergeInto(e.target.value ? Number(e.target.value) : '')}
+            >
+              <option value="">Choose a source…</option>
+              {targets.map((t) => (
+                <option key={t.id} value={t.id}>{t.name} · {t.type}</option>
+              ))}
+            </Select>
+          </Field>
+          {target && (
+            <div className="mt-2 rounded-lg border border-out/40 bg-out/5 p-3">
+              <p className="text-sm">
+                Move {usage?.txnCount ?? 0} payments and {usage?.fundInCount ?? 0} inflows from{' '}
+                <strong>{source.name}</strong> into <strong>{target.name}</strong>, then delete{' '}
+                <strong>{source.name}</strong>. Opening balances add up to{' '}
+                <span className="tnum">
+                  {formatPaise(source.openingBalance + target.openingBalance)}
+                </span>
+                . This cannot be undone.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <Button variant="danger" onClick={() => void doMerge()}>
+                  Merge and delete
+                </Button>
+                <Button variant="secondary" onClick={() => setMergeInto('')}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div>
+        {usage?.inUse ? (
+          <p className="text-xs text-muted">
+            <strong className="text-ink">Cannot be deleted:</strong> {usage.txnCount} payments and{' '}
+            {usage.fundInCount} inflows still point at it. Merge it into another source, or archive
+            it — deleting would leave those entries belonging to no account.
+          </p>
+        ) : confirmDelete ? (
+          <div className="rounded-lg border border-out/40 bg-out/5 p-3">
+            <p className="text-sm">
+              Delete <strong>{source.name}</strong>? Nothing references it, so nothing else
+              changes.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <Button variant="danger" onClick={() => void doDelete()}>
+                Delete
+              </Button>
+              <Button variant="secondary" onClick={() => setConfirmDelete(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button variant="danger" onClick={() => setConfirmDelete(true)}>
+            Delete source
+          </Button>
+        )}
       </div>
     </Card>
   )

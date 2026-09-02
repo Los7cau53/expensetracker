@@ -90,7 +90,11 @@ export function Money({
   signed?: boolean
 }) {
   const tone = !signed ? '' : paise < 0 ? 'text-out' : 'text-in'
-  return <span className={`tnum ${tone} ${className}`}>{formatPaise(paise)}</span>
+  // Never wrap: a break between the minus sign and the digits turns
+  // "-₹35,000.00" into a dash above a positive-looking figure.
+  return (
+    <span className={`tnum whitespace-nowrap ${tone} ${className}`}>{formatPaise(paise)}</span>
+  )
 }
 
 export function Empty({ title, hint }: { title: string; hint?: string }) {
