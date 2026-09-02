@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom'
 import { Button, Card, Field, Money, Screen, Select, Stat, TextInput } from '../components/ui'
 import { sourceBalances, sum } from '../db/queries'
 import { db, SOURCE_TYPES, type SourceType } from '../db/schema'
-import { parseAmountToPaise } from '../lib/money'
+import { guessSourceType } from '../lib/infer'
+import { formatPaiseCompact, parseAmountToPaise } from '../lib/money'
 
 export default function Sources() {
   const balances = useLiveQuery(() => sourceBalances(), [], [])
@@ -24,9 +25,9 @@ export default function Sources() {
     >
       <div className="mx-auto max-w-2xl space-y-4">
         <div className="grid grid-cols-3 gap-3">
-          <Stat label="Funds in" value={<Money paise={totalIn} />} tone="text-in" />
-          <Stat label="Spent" value={<Money paise={totalOut} />} tone="text-out" />
-          <Stat label="Available" value={<Money paise={totalIn - totalOut} />} />
+          <Stat label="Funds in" value={formatPaiseCompact(totalIn)} tone="text-in" />
+          <Stat label="Spent" value={formatPaiseCompact(totalOut)} tone="text-out" />
+          <Stat label="Available" value={formatPaiseCompact(totalIn - totalOut)} />
         </div>
 
         {adding && <NewSourceForm onDone={() => setAdding(false)} />}
@@ -58,10 +59,21 @@ export default function Sources() {
                     <Money paise={outflow} />
                   </div>
                 </div>
+                {/* The row is a link to the source's own screen, where renaming
+                    and merging live. Without a chevron it reads as a static
+                    summary card and the whole screen looks read-only. */}
+                <span aria-hidden className="shrink-0 self-center text-lg leading-none text-muted">
+                  ›
+                </span>
               </div>
             </Link>
           ))}
         </Card>
+
+        <p className="px-1 text-xs text-muted">
+          Tap a source to rename it, fix its type, add funds in, merge duplicates together or
+          archive it.
+        </p>
 
         <p className="px-1 text-xs text-muted">
           Available assumes every rupee that entered a source is recorded here. Add loan
@@ -74,9 +86,14 @@ export default function Sources() {
 
 function NewSourceForm({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState('')
-  const [type, setType] = useState<SourceType>('bank')
+  // The type is inferred from the name — the same inference the importer uses —
+  // until the reader picks one, so "GPay" is not filed as a bank account.
+  const [typeTouched, setTypeTouched] = useState(false)
+  const [pickedType, setPickedType] = useState<SourceType>('bank')
   const [institution, setInstitution] = useState('')
   const [opening, setOpening] = useState('')
+
+  const type = typeTouched ? pickedType : name.trim() ? guessSourceType(name) : 'bank'
 
   async function create() {
     if (!name.trim()) return
@@ -102,8 +119,14 @@ function NewSourceForm({ onDone }: { onDone: () => void }) {
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Type">
-          <Select value={type} onChange={(e) => setType(e.target.value as SourceType)}>
+        <Field label="Type" hint={typeTouched ? undefined : 'Guessed from the name.'}>
+          <Select
+            value={type}
+            onChange={(e) => {
+              setTypeTouched(true)
+              setPickedType(e.target.value as SourceType)
+            }}
+          >
             {SOURCE_TYPES.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}

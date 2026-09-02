@@ -450,3 +450,47 @@ describe('negative money rendering', () => {
     expect(negative.className).toContain('whitespace-nowrap')
   })
 })
+
+describe('creating a source', () => {
+  it('infers the type from the name, the way the importer does', async () => {
+    const user = userEvent.setup()
+    renderApp('/sources')
+    await screen.findByRole('heading', { name: 'Fund sources' })
+
+    await user.click(screen.getByRole('button', { name: 'New source' }))
+    await user.type(await screen.findByPlaceholderText('SBI savings · 4471'), 'GPay')
+
+    // Left as the default "bank", a UPI wallet lands in the wrong bucket in
+    // every report that groups by type.
+    const select = screen.getByLabelText(/Type/i) as HTMLSelectElement
+    expect(select.value).toBe('upi')
+
+    await user.click(screen.getByRole('button', { name: 'Add source' }))
+    await waitFor(async () => {
+      const created = await db.sources.where('name').equals('GPay').first()
+      expect(created?.type).toBe('upi')
+    })
+  })
+
+  it('lets an explicit choice win over the guess', async () => {
+    const user = userEvent.setup()
+    renderApp('/sources')
+    await screen.findByRole('heading', { name: 'Fund sources' })
+
+    await user.click(screen.getByRole('button', { name: 'New source' }))
+    await user.type(await screen.findByPlaceholderText('SBI savings · 4471'), 'GPay')
+    await user.selectOptions(screen.getByLabelText(/Type/i), 'card')
+    await user.click(screen.getByRole('button', { name: 'Add source' }))
+
+    await waitFor(async () => {
+      expect((await db.sources.where('name').equals('GPay').first())?.type).toBe('card')
+    })
+  })
+
+  it('signals that each row opens a screen where it can be renamed', async () => {
+    renderApp('/sources')
+    await screen.findByRole('heading', { name: 'Fund sources' })
+    // The rename lives one tap deeper; without this the screen reads read-only.
+    expect(await screen.findByText(/Tap a source to rename it/)).toBeTruthy()
+  })
+})

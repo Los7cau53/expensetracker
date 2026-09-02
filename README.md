@@ -207,6 +207,11 @@ mestri without being asked.
 
 ## Managing sources
 
+Rows on the Sources list carry a chevron and the screen says so: **tap a source**
+to reach its own screen, where **Edit** (top right) opens rename, type,
+institution, opening balance and notes. Without that affordance the list reads
+as a static summary and the whole screen looks read-only.
+
 Open a source to rename it, correct the type the importer guessed, set its
 institution and opening balance, or deal with it entirely:
 
