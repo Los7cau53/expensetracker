@@ -1,5 +1,6 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
 import AddEntry from './screens/AddEntry'
+import Categories from './screens/Categories'
 import Data from './screens/Data'
 import Ledger from './screens/Ledger'
 import PayeeDetail from './screens/PayeeDetail'
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/payees" element={<Payees />} />
         <Route path="/payees/:id" element={<PayeeDetail />} />
         <Route path="/data" element={<Data />} />
+        <Route path="/categories" element={<Categories />} />
       </Routes>
 
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">

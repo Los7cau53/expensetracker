@@ -63,6 +63,10 @@ export default function Payees() {
 
         {adding && <NewPayeeForm onDone={() => setAdding(false)} />}
 
+        <p className="px-1 text-xs text-muted">
+          Tap a payee to rename them, fix their role, merge duplicates together or archive them.
+        </p>
+
         {visible.length === 0 ? (
           <Empty title="No payees yet" hint="They get created as you record payments." />
         ) : (
@@ -82,6 +86,9 @@ export default function Payees() {
                 </div>
                 <span className="shrink-0 font-semibold">
                   <Money paise={total} />
+                </span>
+                <span aria-hidden className="shrink-0 self-center text-lg leading-none text-muted">
+                  ›
                 </span>
               </Link>
             ))}

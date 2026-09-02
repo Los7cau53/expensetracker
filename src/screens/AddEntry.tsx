@@ -15,7 +15,12 @@ export default function AddEntry() {
   const projects = useLiveQuery(() => db.projects.toArray(), [], [])
   const sources = useLiveQuery(() => db.sources.where('archived').equals(0).toArray(), [], [])
   const payees = useLiveQuery(() => db.payees.where('archived').equals(0).toArray(), [], [])
-  const categories = useLiveQuery(() => db.categories.orderBy('sortOrder').toArray(), [], [])
+  const categories = useLiveQuery(
+    // Archived cost heads stay on old entries but leave the picker.
+    () => db.categories.orderBy('sortOrder').filter((c) => !c.archived).toArray(),
+    [],
+    [],
+  )
 
   // Project, source and category persist between entries: at a site you record
   // six payments in a row against the same property, and re-picking each time

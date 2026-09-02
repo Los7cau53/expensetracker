@@ -62,6 +62,8 @@ export interface Category {
   id: number
   name: string
   sortOrder: number
+  /** Archived cost heads stay on old entries but leave the picker. */
+  archived?: Flag
 }
 
 /**
@@ -146,6 +148,14 @@ db.version(1).stores({
 db.version(2).stores({
   fundIns: '++id, date, sourceId, projectId, importBatchId, [sourceId+date]',
 })
+
+// v3: cost heads can be archived, so an import's junk entries can leave the
+// picker without deleting the history that points at them.
+db.version(3)
+  .stores({
+    categories: '++id, name, sortOrder, archived',
+  })
+  .upgrade((tx) => tx.table('categories').toCollection().modify({ archived: 0 }))
 
 export { db }
 

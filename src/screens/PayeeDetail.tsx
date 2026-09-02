@@ -1,13 +1,38 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Link, useParams } from 'react-router-dom'
-import { Bar, Card, Empty, Money, Screen, Stat } from '../components/ui'
+import { useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ManagePanel, Notice } from '../components/ManagePanel'
+import {
+  Bar,
+  Button,
+  Card,
+  Empty,
+  Field,
+  Money,
+  Screen,
+  Select,
+  Stat,
+  TextInput,
+} from '../components/ui'
 import { sum } from '../db/queries'
-import { db } from '../db/schema'
+import {
+  deletePayee,
+  mergePayees,
+  payeeMergeTargets,
+  payeeUsage,
+  setPayeeArchived,
+  updatePayee,
+} from '../db/manage'
+import { db, PAYEE_ROLES, type Payee, type PayeeRole } from '../db/schema'
 import { formatDate } from '../lib/date'
 
 /** One payee's full ledger, split by property. */
 export default function PayeeDetail() {
   const id = Number(useParams().id)
+  const navigate = useNavigate()
+  const [editing, setEditing] = useState(false)
+  const [status, setStatus] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const payee = useLiveQuery(() => db.payees.get(id), [id])
   const txns = useLiveQuery(
@@ -18,6 +43,8 @@ export default function PayeeDetail() {
   const projects = useLiveQuery(() => db.projects.toArray(), [], [])
   const categories = useLiveQuery(() => db.categories.toArray(), [], [])
   const sources = useLiveQuery(() => db.sources.toArray(), [], [])
+  const usage = useLiveQuery(() => payeeUsage(id), [id])
+  const targets = useLiveQuery(() => payeeMergeTargets(id), [id], [])
 
   if (!payee) return <Screen title="Payee"><Empty title="Payee not found" /></Screen>
 
@@ -30,8 +57,29 @@ export default function PayeeDetail() {
     .sort((a, b) => b.total - a.total)
 
   return (
-    <Screen title={payee.name}>
+    <Screen
+      title={payee.name}
+      action={
+        <Button variant="secondary" onClick={() => setEditing((v) => !v)}>
+          {editing ? 'Cancel' : 'Edit'}
+        </Button>
+      }
+    >
       <div className="mx-auto max-w-2xl space-y-4">
+        {editing && (
+          <EditPayeeForm
+            payee={payee}
+            onDone={(m) => {
+              setEditing(false)
+              setStatus(m)
+              setError(null)
+            }}
+            onError={setError}
+          />
+        )}
+
+        <Notice status={status} error={error} />
+
         <div className="grid grid-cols-3 gap-3">
           <Stat label="Total paid" value={<Money paise={total} />} />
           <Stat label="Payments" value={txns.length} />
@@ -81,8 +129,85 @@ export default function PayeeDetail() {
           </Card>
         )}
 
+        <ManagePanel
+          noun="payee"
+          name={payee.name}
+          usage={usage}
+          archived={Boolean(payee.archived)}
+          onArchive={(next) => setPayeeArchived(id, next)}
+          targets={targets.map((t) => ({ id: t.id, name: t.name, sub: t.role }))}
+          mergePreview={(t) => (
+            <>
+              Move {usage?.txnCount ?? 0} payments from <strong>{payee.name}</strong> onto{' '}
+              <strong>{t.name}</strong>, then delete <strong>{payee.name}</strong>. Use this when an
+              import created the same person twice. This cannot be undone.
+            </>
+          )}
+          onMerge={async (targetId) => {
+            const r = await mergePayees(id, targetId)
+            return `Merged: moved ${r.movedTxns} payments.`
+          }}
+          onDelete={() => deletePayee(id)}
+          onDone={(m) => {
+            setStatus(m)
+            setError(null)
+          }}
+          onError={setError}
+          onGone={() => navigate('/payees')}
+        />
+
         <Link to="/payees" className="block px-1 text-sm text-accent">← All payees</Link>
       </div>
     </Screen>
+  )
+}
+
+function EditPayeeForm({
+  payee,
+  onDone,
+  onError,
+}: {
+  payee: Payee
+  onDone: (msg: string) => void
+  onError: (msg: string) => void
+}) {
+  const [name, setName] = useState(payee.name)
+  const [role, setRole] = useState<PayeeRole>(payee.role)
+  const [phone, setPhone] = useState(payee.phone ?? '')
+  const [notes, setNotes] = useState(payee.notes ?? '')
+
+  async function save() {
+    try {
+      await updatePayee(payee.id, { name, role, phone, notes })
+      onDone('Payee updated.')
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not save.')
+    }
+  }
+
+  return (
+    <Card className="space-y-3 p-4">
+      <Field label="Name">
+        <TextInput value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Role" hint="Drives the role-wise breakdowns.">
+          <Select value={role} onChange={(e) => setRole(e.target.value as PayeeRole)}>
+            {PAYEE_ROLES.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Phone">
+          <TextInput value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} />
+        </Field>
+      </div>
+      <Field label="Notes">
+        <TextInput value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
+      </Field>
+      <Button onClick={() => void save()} disabled={!name.trim()}>
+        Save changes
+      </Button>
+    </Card>
   )
 }

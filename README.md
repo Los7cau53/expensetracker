@@ -205,7 +205,33 @@ Payee roles and source types are inferred from names (`src/lib/infer.ts`), and
 the same inference runs on manual entry, so typing "Ramesh mestri" tags them a
 mestri without being asked.
 
-## Managing sources
+## Managing sources, payees, cost heads and properties
+
+All four support the same three operations, through one shared panel
+(`src/components/ManagePanel.tsx`) so the guard rails and wording cannot drift
+apart between them:
+
+- **Edit** — rename, and fix whatever the importer guessed (a source's type, a
+  payee's role, a property's status and budget).
+- **Archive** — leaves the entity on every historical entry but removes it from
+  the pickers when recording a payment. Properties use their `status` instead.
+- **Merge** — moves every entry across and deletes the emptied entity. This is
+  the operation an import demands, because the importer matches by name: a
+  sheet spelling one account or person several ways leaves several entries for
+  one real thing.
+- **Delete** — refused while anything still references the entity, and refused
+  for the last remaining source, cost head or property.
+
+Cost heads live at `/categories`, reachable from **Data & backup → Manage cost
+heads**. That screen is where import cleanup usually happens: the wizard files
+whatever was in the chosen column as a cost head, so entries like
+`net banking main form` — really a source — end up among the real ones.
+
+Renaming is blocked only when the new name collides with a *different* entity.
+An import can leave two spellings already colliding; checking unconditionally
+would lock both out of every edit, type and role corrections included.
+
+## Sources in detail
 
 Rows on the Sources list carry a chevron and the screen says so: **tap a source**
 to reach its own screen, where **Edit** (top right) opens rename, type,

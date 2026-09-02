@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ManagePanel, Notice } from '../components/ManagePanel'
 import { Button, Card, Empty, Field, Money, Screen, Select, Stat, TextInput } from '../components/ui'
 import { sum } from '../db/queries'
 import {
@@ -100,12 +101,7 @@ export default function SourceDetail() {
 
         {addingFunds && <FundInForm sourceId={id} onDone={() => setAddingFunds(false)} />}
 
-        {status && (
-          <p className="rounded-lg bg-in/10 px-3 py-2 text-sm font-medium text-in">{status}</p>
-        )}
-        {error && (
-          <p className="rounded-lg bg-out/10 px-3 py-2 text-sm font-medium text-out">{error}</p>
-        )}
+        <Notice status={status} error={error} />
 
         {lines.length === 0 ? (
           <Empty title="Nothing recorded against this source yet" />
@@ -129,16 +125,38 @@ export default function SourceDetail() {
           </Card>
         )}
 
-        <ManageSource
-          source={source}
+        <ManagePanel
+          noun="source"
+          name={source.name}
           usage={usage}
-          targets={targets}
-          onDone={(msg) => {
-            setStatus(msg)
+          archived={Boolean(source.archived)}
+          onArchive={(next) => setSourceArchived(id, next)}
+          targets={targets.map((t) => ({ id: t.id, name: t.name, sub: t.type }))}
+          mergePreview={(t) => {
+            const into = targets.find((x) => x.id === t.id)!
+            return (
+              <>
+                Move {usage?.txnCount ?? 0} payments and {usage?.fundInCount ?? 0} inflows from{' '}
+                <strong>{source.name}</strong> into <strong>{t.name}</strong>, then delete{' '}
+                <strong>{source.name}</strong>. Opening balances add up to{' '}
+                <span className="tnum">
+                  {formatPaise(source.openingBalance + into.openingBalance)}
+                </span>
+                . This cannot be undone.
+              </>
+            )
+          }}
+          onMerge={async (targetId) => {
+            const r = await mergeSources(id, targetId)
+            return `Merged: moved ${r.movedTxns} payments and ${r.movedFundIns} inflows.`
+          }}
+          onDelete={() => deleteSource(id)}
+          onDone={(m) => {
+            setStatus(m)
             setError(null)
           }}
           onError={setError}
-          onDeleted={() => navigate('/sources')}
+          onGone={() => navigate('/sources')}
         />
 
         <Link to="/sources" className="block px-1 text-sm text-accent">
@@ -258,149 +276,6 @@ function EditSourceForm({
       <Button onClick={() => void save()} disabled={!name.trim()}>
         Save changes
       </Button>
-    </Card>
-  )
-}
-
-/**
- * Archive, merge, delete. Merge is the one that matters after an import: a
- * sheet that spells an account two ways produces two sources for one real
- * account, and only merging puts the history back together.
- */
-function ManageSource({
-  source,
-  usage,
-  targets,
-  onDone,
-  onError,
-  onDeleted,
-}: {
-  source: Source
-  usage?: { txnCount: number; fundInCount: number; inUse: boolean }
-  targets: Source[]
-  onDone: (msg: string) => void
-  onError: (msg: string) => void
-  onDeleted: () => void
-}) {
-  const [mergeInto, setMergeInto] = useState<number | ''>('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
-
-  const target = targets.find((t) => t.id === mergeInto)
-
-  async function doMerge() {
-    if (typeof mergeInto !== 'number') return
-    try {
-      const r = await mergeSources(source.id, mergeInto)
-      onDone(
-        `Merged into ${target?.name}: moved ${r.movedTxns} payments and ${r.movedFundIns} inflows.`,
-      )
-      onDeleted()
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Merge failed.')
-    }
-  }
-
-  async function doDelete() {
-    try {
-      await deleteSource(source.id)
-      onDone('Source deleted.')
-      onDeleted()
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Could not delete.')
-      setConfirmDelete(false)
-    }
-  }
-
-  return (
-    <Card className="space-y-4 p-4">
-      <h2 className="text-sm font-semibold">Manage this source</h2>
-
-      <div>
-        <Button
-          variant="secondary"
-          onClick={() =>
-            void setSourceArchived(source.id, !source.archived).then(() =>
-              onDone(source.archived ? 'Source restored.' : 'Source archived.'),
-            )
-          }
-        >
-          {source.archived ? 'Restore' : 'Archive'}
-        </Button>
-        <p className="mt-1 text-xs text-muted">
-          {source.archived
-            ? 'Archived: hidden when recording a payment, but its history is intact.'
-            : 'Hides it when recording a payment. Nothing is lost and past reports are unchanged.'}
-        </p>
-      </div>
-
-      {targets.length > 0 && (
-        <div>
-          <Field
-            label="Merge into another source"
-            hint="Moves every payment and inflow across, adds the opening balances together, then removes this one."
-          >
-            <Select
-              value={mergeInto}
-              onChange={(e) => setMergeInto(e.target.value ? Number(e.target.value) : '')}
-            >
-              <option value="">Choose a source…</option>
-              {targets.map((t) => (
-                <option key={t.id} value={t.id}>{t.name} · {t.type}</option>
-              ))}
-            </Select>
-          </Field>
-          {target && (
-            <div className="mt-2 rounded-lg border border-out/40 bg-out/5 p-3">
-              <p className="text-sm">
-                Move {usage?.txnCount ?? 0} payments and {usage?.fundInCount ?? 0} inflows from{' '}
-                <strong>{source.name}</strong> into <strong>{target.name}</strong>, then delete{' '}
-                <strong>{source.name}</strong>. Opening balances add up to{' '}
-                <span className="tnum">
-                  {formatPaise(source.openingBalance + target.openingBalance)}
-                </span>
-                . This cannot be undone.
-              </p>
-              <div className="mt-2 flex gap-2">
-                <Button variant="danger" onClick={() => void doMerge()}>
-                  Merge and delete
-                </Button>
-                <Button variant="secondary" onClick={() => setMergeInto('')}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div>
-        {usage?.inUse ? (
-          <p className="text-xs text-muted">
-            <strong className="text-ink">Cannot be deleted:</strong> {usage.txnCount} payments and{' '}
-            {usage.fundInCount} inflows still point at it. Merge it into another source, or archive
-            it — deleting would leave those entries belonging to no account.
-          </p>
-        ) : confirmDelete ? (
-          <div className="rounded-lg border border-out/40 bg-out/5 p-3">
-            <p className="text-sm">
-              Delete <strong>{source.name}</strong>? Nothing references it, so nothing else
-              changes.
-            </p>
-            <div className="mt-2 flex gap-2">
-              <Button variant="danger" onClick={() => void doDelete()}>
-                Delete
-              </Button>
-              <Button variant="secondary" onClick={() => setConfirmDelete(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <Button variant="danger" onClick={() => setConfirmDelete(true)}>
-            Delete source
-          </Button>
-        )}
-      </div>
     </Card>
   )
 }

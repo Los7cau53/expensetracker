@@ -24,7 +24,12 @@ export default function Ledger() {
   const projects = useLiveQuery(() => db.projects.toArray(), [], [])
   const sources = useLiveQuery(() => db.sources.toArray(), [], [])
   const payees = useLiveQuery(() => db.payees.toArray(), [], [])
-  const categories = useLiveQuery(() => db.categories.orderBy('sortOrder').toArray(), [], [])
+  const categories = useLiveQuery(
+    // Archived cost heads stay on old entries but leave the picker.
+    () => db.categories.orderBy('sortOrder').filter((c) => !c.archived).toArray(),
+    [],
+    [],
+  )
   const txns = useLiveQuery(() => filterTxns(filter), [JSON.stringify(filter)], [])
 
   const name = {

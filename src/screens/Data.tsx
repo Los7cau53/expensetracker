@@ -338,6 +338,23 @@ export default function Data() {
         {status && <p className="rounded-lg bg-in/10 px-3 py-2 text-sm font-medium text-in">{status}</p>}
         {error && <p className="rounded-lg bg-out/10 px-3 py-2 text-sm font-medium text-out">{error}</p>}
 
+        <Card className="space-y-3 p-4">
+          <div>
+            <h2 className="font-semibold">Cost heads</h2>
+            <p className="mt-1 text-sm text-muted">
+              Rename, merge or archive the cost heads that payments are filed under. An import
+              turns whatever was in the chosen column into cost heads, so this is usually where
+              the cleanup happens.
+            </p>
+          </div>
+          <Link
+            to="/categories"
+            className="inline-block rounded-lg border border-line px-4 py-2.5 text-sm font-semibold"
+          >
+            Manage cost heads
+          </Link>
+        </Card>
+
         <Link to="/properties" className="block px-1 text-sm text-accent">← Properties</Link>
       </div>
     </Screen>
