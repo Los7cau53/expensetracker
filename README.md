@@ -12,15 +12,54 @@ Single user, no accounts, no server. All data stays in this browser.
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 52 tests
+npm test           # 98 tests
 npm run typecheck
 npm run build      # static output in dist/
 ```
 
-Serve `dist/` from any static host (GitHub Pages, Netlify, a folder in iCloud).
-Routing is hash-based and asset paths are relative, so it works from any
-subdirectory with no server rewrites. Open it once over HTTPS on your phone and
-"Add to Home Screen" to install it.
+**Node is a build-time tool only.** There is no server, no backend and no API:
+`dist/` is ~860 KB of static files, and the built app boots, registers its
+service worker and works fully offline when served by `python3 -m http.server`.
+Nothing in the bundle calls out to a network origin.
+
+## Putting it on a phone
+
+Installing needs **HTTPS** — a `http://192.168.x.x` LAN address will render the
+app but is not a secure context, so no service worker, no offline, no real
+install.
+
+Pushing to `main` builds and publishes to GitHub Pages via
+`.github/workflows/deploy.yml`, which runs typecheck and the test suite first so
+a broken build never reaches the phone that depends on it. One-time repo setup:
+**Settings → Pages → Source: GitHub Actions**. Nothing else to configure — the
+app uses a relative base and hash routing, so a `/<repo>/` subpath works with no
+rewrite rules (verified: service worker scope, deep links and offline reload all
+hold under a subdirectory).
+
+With a free GitHub account, Pages needs a **public** repository. That publishes
+only the app's code — `.gitignore` keeps spreadsheets, CSVs and exported
+backups out, and there is no server for data to sit on. Every rupee stays in
+your own browser's storage.
+
+Then, on the phone: open the Pages URL in **Safari** on iOS (Chrome on iOS
+cannot install PWAs) → Share → Add to Home Screen. On Android, Chrome offers an
+install prompt.
+
+**The URL is the identity of your data.** Browser storage is per-origin, so
+entries made at one address do not follow you to another. Settle on the
+permanent URL before entering real expenses.
+
+## Using two devices
+
+There is no sync and no merge — the JSON backup is the bridge, and **restore
+replaces**. So the app checks before it overwrites: if the file you are
+restoring is older than what is already in this browser, it says so, by how
+much, and how many entries you stand to lose, before you can proceed. A minute
+of slack absorbs clock skew between devices.
+
+The safe habit is one direction at a time: export from the device you have been
+using, restore on the other, and let whichever holds the newest entries be the
+one you export from next.
 
 ## Screens
 
