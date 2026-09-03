@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { lazy, Suspense, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { SyncPanel } from '../components/SyncPanel'
 import { Button, Card, Money, Screen, Stat } from '../components/ui'
 import { sum } from '../db/queries'
 import { db } from '../db/schema'
@@ -115,6 +116,8 @@ export default function Data() {
           <Stat label="Entries" value={txns.length} />
           <Stat label="Recorded" value={<Money paise={sum(txns.map((t) => t.amount))} />} />
         </div>
+
+        <SyncPanel />
 
         <Card
           // Only alarming once there is something to lose — a fresh install

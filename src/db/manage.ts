@@ -8,8 +8,24 @@ import {
   type ProjectStatus,
   type Source,
   type SourceType,
+  type SyncedTable,
 } from './schema'
 import type { Paise } from '../lib/money'
+
+/**
+ * Marks records as deleted for sync's benefit.
+ *
+ * Must run inside the same transaction as the delete: a tombstone written for
+ * a delete that then rolls back would tell the other device to remove a record
+ * that still exists here.
+ */
+async function recordDeletion(table: SyncedTable, ids: Id[]): Promise<void> {
+  if (ids.length === 0) return
+  const deletedAt = Date.now()
+  await db.tombstones.bulkPut(
+    ids.map((recordId) => ({ id: `${table}:${recordId}`, table, recordId, deletedAt })),
+  )
+}
 
 export interface SourceUsage {
   txnCount: number
@@ -86,7 +102,10 @@ export async function deleteSource(sourceId: Id): Promise<void> {
   if ((await db.sources.count()) <= 1) {
     throw new Error('This is your only source. Add another before deleting this one.')
   }
-  await db.sources.delete(sourceId)
+  await db.transaction('rw', [db.sources, db.tombstones], async () => {
+    await db.sources.delete(sourceId)
+    await recordDeletion('sources', [sourceId])
+  })
 }
 
 export interface MergeResult {
@@ -106,7 +125,7 @@ export interface MergeResult {
 export async function mergeSources(fromId: Id, intoId: Id): Promise<MergeResult> {
   if (fromId === intoId) throw new Error('Pick a different source to merge into.')
 
-  return db.transaction('rw', [db.sources, db.txns, db.fundIns], async () => {
+  return db.transaction('rw', [db.sources, db.txns, db.fundIns, db.tombstones], async () => {
     const from = await db.sources.get(fromId)
     const into = await db.sources.get(intoId)
     if (!from || !into) throw new Error('One of those sources no longer exists.')
@@ -121,6 +140,7 @@ export async function mergeSources(fromId: Id, intoId: Id): Promise<MergeResult>
       openingBalance: into.openingBalance + from.openingBalance,
     })
     await db.sources.delete(fromId)
+    await recordDeletion('sources', [fromId])
 
     return { movedTxns, movedFundIns, openingBalanceAdded: from.openingBalance }
   })
@@ -209,17 +229,21 @@ export async function deletePayee(payeeId: Id): Promise<void> {
         'Merge them into another payee, or archive this one instead.',
     )
   }
-  await db.payees.delete(payeeId)
+  await db.transaction('rw', [db.payees, db.tombstones], async () => {
+    await db.payees.delete(payeeId)
+    await recordDeletion('payees', [payeeId])
+  })
 }
 
 export async function mergePayees(fromId: Id, intoId: Id): Promise<{ movedTxns: number }> {
   if (fromId === intoId) throw new Error('Pick a different payee to merge into.')
-  return db.transaction('rw', [db.payees, db.txns], async () => {
+  return db.transaction('rw', [db.payees, db.txns, db.tombstones], async () => {
     const from = await db.payees.get(fromId)
     const into = await db.payees.get(intoId)
     if (!from || !into) throw new Error('One of those payees no longer exists.')
     const movedTxns = await db.txns.where('payeeId').equals(fromId).modify({ payeeId: intoId })
     await db.payees.delete(fromId)
+    await recordDeletion('payees', [fromId])
     return { movedTxns }
   })
 }
@@ -257,7 +281,10 @@ export async function deleteCategory(categoryId: Id): Promise<void> {
   if ((await db.categories.count()) <= 1) {
     throw new Error('This is your only cost head. Add another before deleting this one.')
   }
-  await db.categories.delete(categoryId)
+  await db.transaction('rw', [db.categories, db.tombstones], async () => {
+    await db.categories.delete(categoryId)
+    await recordDeletion('categories', [categoryId])
+  })
 }
 
 export async function mergeCategories(
@@ -265,12 +292,13 @@ export async function mergeCategories(
   intoId: Id,
 ): Promise<{ movedTxns: number }> {
   if (fromId === intoId) throw new Error('Pick a different cost head to merge into.')
-  return db.transaction('rw', [db.categories, db.txns], async () => {
+  return db.transaction('rw', [db.categories, db.txns, db.tombstones], async () => {
     const from = await db.categories.get(fromId)
     const into = await db.categories.get(intoId)
     if (!from || !into) throw new Error('One of those cost heads no longer exists.')
     const movedTxns = await db.txns.where('categoryId').equals(fromId).modify({ categoryId: intoId })
     await db.categories.delete(fromId)
+    await recordDeletion('categories', [fromId])
     return { movedTxns }
   })
 }
@@ -329,7 +357,10 @@ export async function deleteProject(projectId: Id): Promise<void> {
   if ((await db.projects.count()) <= 1) {
     throw new Error('This is your only property. Add another before deleting this one.')
   }
-  await db.projects.delete(projectId)
+  await db.transaction('rw', [db.projects, db.tombstones], async () => {
+    await db.projects.delete(projectId)
+    await recordDeletion('projects', [projectId])
+  })
 }
 
 export async function mergeProjects(
@@ -337,7 +368,7 @@ export async function mergeProjects(
   intoId: Id,
 ): Promise<{ movedTxns: number; movedFundIns: number; budgetAdded: Paise }> {
   if (fromId === intoId) throw new Error('Pick a different property to merge into.')
-  return db.transaction('rw', [db.projects, db.txns, db.fundIns], async () => {
+  return db.transaction('rw', [db.projects, db.txns, db.fundIns, db.tombstones], async () => {
     const from = await db.projects.get(fromId)
     const into = await db.projects.get(intoId)
     if (!from || !into) throw new Error('One of those properties no longer exists.')
@@ -354,6 +385,7 @@ export async function mergeProjects(
       await db.projects.update(intoId, { budget: (into.budget ?? 0) + budgetAdded })
     }
     await db.projects.delete(fromId)
+    await recordDeletion('projects', [fromId])
     return { movedTxns, movedFundIns, budgetAdded }
   })
 }

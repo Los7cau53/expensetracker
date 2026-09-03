@@ -7,6 +7,21 @@ export default defineConfig({
   // Relative asset paths so the built app works from any static path,
   // including a GitHub Pages project subdirectory.
   base: './',
+  build: {
+    rollupOptions: {
+      output: {
+        // A stable name so the precache can exclude it by glob. Left to hash
+        // its own name, the Firebase SDK's chunks are unmatchable and end up
+        // precached — 700 KB every install pays for, signed in or not.
+        manualChunks(id) {
+          if (id.includes('node_modules/@firebase') || id.includes('node_modules/firebase')) {
+            return 'firebase'
+          }
+          return undefined
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -36,10 +51,21 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         // Without this, `**/*.js` sweeps the 3.8 MB OCR core into the precache
         // and every install pays for a feature most sessions never touch.
-        globIgnores: ['**/ocr/**'],
+        // Both are large, optional and used by a minority of sessions: fetched
+        // on first use and cached by the runtime rules below instead.
+        globIgnores: ['**/ocr/**', '**/firebase-*.js'],
         // The OCR engine and model are ~6 MB and only needed by one optional
         // feature, so they are cached on first use rather than precached.
         runtimeCaching: [
+          {
+            urlPattern: /\/assets\/firebase-[A-Za-z0-9_-]+\.js$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'firebase-sdk',
+              expiration: { maxEntries: 4 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
           {
             urlPattern: /\/ocr\/.*\.(?:wasm|gz|js)$/,
             handler: 'CacheFirst',

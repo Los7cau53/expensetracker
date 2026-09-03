@@ -34,6 +34,7 @@ export interface Project {
   status: ProjectStatus
   budget?: Paise
   createdAt: number
+  updatedAt?: number
 }
 
 /** Where money comes FROM: a bank account, cash in hand, a UPI app, a loan. */
@@ -46,6 +47,7 @@ export interface Source {
   archived: Flag
   notes?: string
   createdAt: number
+  updatedAt?: number
 }
 
 /** Whom money is given TO: mestri, electrician, supplier, government office. */
@@ -57,6 +59,7 @@ export interface Payee {
   archived: Flag
   notes?: string
   createdAt: number
+  updatedAt?: number
 }
 
 export interface Category {
@@ -65,6 +68,8 @@ export interface Category {
   sortOrder: number
   /** Archived cost heads stay on old entries but leave the picker. */
   archived?: Flag
+  createdAt?: number
+  updatedAt?: number
 }
 
 /**
@@ -103,6 +108,7 @@ export interface FundIn {
   /** Set when the row came from a spreadsheet import, so it can be undone. */
   importBatchId?: Id
   createdAt: number
+  updatedAt?: number
 }
 
 export interface ImportBatch {
@@ -120,6 +126,30 @@ export interface Setting {
   value: unknown
 }
 
+/**
+ * A record of a deletion, so sync can propagate it.
+ *
+ * A hard delete leaves nothing behind, so the other device would push its own
+ * still-present copy back and the record would silently reappear.
+ */
+export interface Tombstone {
+  /** `<table>:<recordId>` */
+  id: string
+  table: SyncedTable
+  recordId: Id
+  deletedAt: number
+}
+
+export const SYNCED_TABLES = [
+  'projects',
+  'sources',
+  'payees',
+  'categories',
+  'txns',
+  'fundIns',
+] as const
+export type SyncedTable = (typeof SYNCED_TABLES)[number]
+
 export const DB_NAME = 'constructionLedger'
 /** The pre-UUID database. Read once during migration, then left alone. */
 export const LEGACY_DB_NAME = 'constructionExpenses'
@@ -133,6 +163,7 @@ const db = new Dexie(DB_NAME) as Dexie & {
   fundIns: EntityTable<FundIn, 'id'>
   importBatches: EntityTable<ImportBatch, 'id'>
   settings: EntityTable<Setting, 'key'>
+  tombstones: EntityTable<Tombstone, 'id'>
 }
 
 db.version(1).stores({
@@ -146,6 +177,7 @@ db.version(1).stores({
   fundIns: 'id, date, sourceId, projectId, importBatchId, [sourceId+date]',
   importBatches: 'id, importedAt',
   settings: 'key',
+  tombstones: 'id, table, deletedAt',
 })
 
 /**
@@ -165,9 +197,22 @@ for (const table of [
   db.fundIns,
   db.importBatches,
 ]) {
-  table.hook('creating', (_primKey, obj: { id?: Id }) => {
+  table.hook('creating', (_primKey, obj: { id?: Id; createdAt?: number; updatedAt?: number }) => {
     if (!obj.id) obj.id = newId()
+    const now = Date.now()
+    if (obj.createdAt === undefined) obj.createdAt = now
+    // The stamp sync compares against. Every write must move it.
+    if (obj.updatedAt === undefined) obj.updatedAt = now
     return obj.id
+  })
+
+  table.hook('updating', (modifications) => {
+    // Sync itself writes an explicit updatedAt when applying a remote record;
+    // overwriting it here would make the local copy look newer and push back.
+    if (modifications && typeof modifications === 'object' && 'updatedAt' in modifications) {
+      return undefined
+    }
+    return { updatedAt: Date.now() }
   })
 }
 

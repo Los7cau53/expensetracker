@@ -152,6 +152,57 @@ accounts and API keys.
 - `navigator.storage.persist()` is requested on first run, which reduces the
   chance of eviction but is not a guarantee (Safari ignores it).
 
+## Syncing with a Google account
+
+`Data & backup → Sync with Google`. Optional: signed out, the app behaves
+exactly as before and every entry stays on the device.
+
+**Dexie remains the source of truth for reads.** Firestore is a mirror, not the
+store, so the app stays fully usable offline and losing Google access never
+locks you out of your own ledger.
+
+**Per-record, not whole-file.** Each record carries an `updatedAt` stamp, and a
+conflict is resolved per record by that stamp. Two devices editing *different*
+payments both keep their work; only a genuine same-record clash is decided by
+which write came later. That is the whole reason this is not a file push.
+
+**Deletes travel as tombstones** (`src/db/schema.ts`, `Tombstone`). A hard
+delete leaves nothing behind, so the other device would push its still-present
+copy back and the record would silently reappear. Tombstones are written inside
+the same transaction as the delete — one written for a delete that then rolled
+back would tell the other device to remove a record that still exists.
+
+One deliberate rule: **an edit made after a delete wins**, and the record comes
+back. Someone who touched a record more recently than whoever removed it should
+not have it vanish under them.
+
+Not real-time: it syncs on sign-in, every minute, on regaining focus, and on
+reconnecting. A payment is not collaborative editing, and fewer moving parts is
+worth more than instant propagation.
+
+### Weight
+
+The Firebase SDK is ~207 KB gzipped — larger than the rest of the app. It is
+behind a dynamic import, given a stable chunk name, and excluded from the
+precache (`globIgnores: ['**/firebase-*.js']`), so a session that never signs
+in never downloads it. Verified against the production build by asserting no
+request for it until sign-in is pressed. Install stays ~870 KB.
+
+### Setup
+
+Firestore is in production mode, which denies everything by default, so
+`firestore.rules` must be deployed before sync can work. The rules scope every
+document to the Google account that owns it — `users/<uid>/records/<id>`,
+readable and writable only when `request.auth.uid == uid`.
+
+```bash
+npx firebase-tools login
+npx firebase-tools deploy --only firestore:rules --project construction-tracker-68275
+```
+
+`los7cau53.github.io` must also be listed under **Authentication → Settings →
+Authorized domains**.
+
 ## Record ids and the migration off auto-increment
 
 Ids are UUIDs (`src/db/ids.ts`), not Dexie's `++id`. That counter is private to
