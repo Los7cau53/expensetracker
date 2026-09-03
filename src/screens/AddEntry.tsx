@@ -2,9 +2,11 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ComboBox } from '../components/ComboBox'
+import { ScreenshotReader } from '../components/ScreenshotReader'
 import { Button, Field, Screen, Select, TextInput } from '../components/ui'
 import { db, PAYEE_ROLES, type PayeeRole } from '../db/schema'
 import { todayStr } from '../lib/date'
+import { receiptNote, type ReceiptFields } from '../lib/gpay'
 import { guessPayeeRole } from '../lib/infer'
 import { formatPaise, parseAmountToPaise } from '../lib/money'
 import { usePref } from '../lib/prefs'
@@ -36,6 +38,8 @@ export default function AddEntry() {
   const [refNo, setRefNo] = useState('')
   const [saved, setSaved] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reading, setReading] = useState(false)
+  const [matchNote, setMatchNote] = useState<string | null>(null)
 
   const effectiveProject = projectId ?? projects[0]?.id
   const effectiveSource = sourceId ?? sources[0]?.id
@@ -78,6 +82,59 @@ export default function AddEntry() {
     }
   }
 
+  /**
+   * Applies what a screenshot gave us. Anything already typed is left alone —
+   * the reader assists, it does not overwrite the reader's own corrections.
+   */
+  async function applyReceipt(f: ReceiptFields) {
+    const notes: string[] = []
+
+    if (f.amount) setAmount((f.amount / 100).toString())
+    if (f.date) setDate(f.date)
+    if (f.reference) setRefNo(f.reference)
+
+    const note = receiptNote(f)
+    if (note) setNote(note)
+
+    // Match the recipient onto an existing payee before creating another one;
+    // the whole point of merging duplicates was to stop them multiplying.
+    if (f.payee) {
+      const norm = (v: string) => v.trim().toLowerCase()
+      const hit = payees.find((p) => norm(p.name) === norm(f.payee!))
+      if (hit) setPayeeId(hit.id)
+      else {
+        const id = (await db.payees.add({
+          name: f.payee,
+          role: guessPayeeRole(f.payee),
+          archived: 0,
+          createdAt: Date.now(),
+        } as never)) as number
+        setPayeeId(id)
+        notes.push(`added "${f.payee}" as a new payee`)
+      }
+    }
+
+    // The bank is matched on its last four digits first, since a source is
+    // usually named for the account rather than exactly as the receipt spells
+    // the bank.
+    if (f.bankLast4 || f.bank) {
+      const hit =
+        (f.bankLast4 && sources.find((s) => s.name.includes(f.bankLast4!))) ||
+        (f.bank && sources.find((s) => s.name.toLowerCase().includes(f.bank!.toLowerCase()))) ||
+        (f.bank &&
+          sources.find((s) =>
+            (s.institution ?? '').toLowerCase().includes(f.bank!.split(' ')[0].toLowerCase()),
+          ))
+      if (hit) setSourceId(hit.id)
+      else {
+        const label = [f.bank, f.bankLast4].filter(Boolean).join(' ')
+        notes.push(`no source matches "${label}" — pick one, or add it on the Sources tab`)
+      }
+    }
+
+    setMatchNote(notes.length ? notes.join('. ') : null)
+  }
+
   async function createPayee(name: string) {
     return (await db.payees.add({
       name,
@@ -96,6 +153,18 @@ export default function AddEntry() {
   return (
     <Screen title="Add payment">
       <div className="mx-auto max-w-2xl space-y-4">
+        {reading ? (
+          <ScreenshotReader onExtract={(f) => void applyReceipt(f)} onClose={() => setReading(false)} />
+        ) : (
+          <Button variant="secondary" className="w-full" onClick={() => setReading(true)}>
+            Read a payment screenshot
+          </Button>
+        )}
+
+        {matchNote && (
+          <p className="rounded-lg bg-accent/5 px-3 py-2 text-xs text-muted">{matchNote}</p>
+        )}
+
         <Field label="Amount paid">
           <input
             value={amount}

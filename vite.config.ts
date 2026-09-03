@@ -34,6 +34,22 @@ export default defineConfig({
         // Everything is local, so precaching the whole shell is the entire
         // offline story — there are no network calls to fall back on.
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        // Without this, `**/*.js` sweeps the 3.8 MB OCR core into the precache
+        // and every install pays for a feature most sessions never touch.
+        globIgnores: ['**/ocr/**'],
+        // The OCR engine and model are ~6 MB and only needed by one optional
+        // feature, so they are cached on first use rather than precached.
+        runtimeCaching: [
+          {
+            urlPattern: /\/ocr\/.*\.(?:wasm|gz|js)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'ocr-engine',
+              expiration: { maxEntries: 8 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],

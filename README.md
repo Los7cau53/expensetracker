@@ -257,6 +257,50 @@ Renaming is blocked only when the new name collides with a *different* source.
 An import can leave two spellings of one account already colliding; checking
 unconditionally would lock both out of every edit, including fixing their type.
 
+## Reading a Google Pay screenshot
+
+`Add → Read a payment screenshot` fills the form from a receipt, leaving every
+field editable. The one thing it never guesses is the cost head — a receipt
+cannot know what the money was for.
+
+Two independent passes, because they fail in different places:
+
+1. **The filename**, parsed instantly and exactly. A file shared out of Google
+   Pay is named `1787832753 - 16000.00 To prakash Raj Raj on Google Pay.png`,
+   which carries the epoch timestamp, the amount and the payee — no OCR, no
+   guessing. A screenshot taken with the volume buttons carries none of this.
+2. **On-device OCR** of the image, which is the only place the bank account and
+   the UPI reference exist. Also the fallback for everything when the filename
+   is bare.
+
+Each extracted field is labelled with where it came from, and the raw OCR text
+is shown under "What the reader saw" so a misread is visible rather than
+silent. The reader also refuses to be quiet about a receipt that says **failed**
+or **pending**, and flags one that reads as money *received* rather than spent.
+
+Matching: the payee is matched onto an existing one case-insensitively before a
+new one is created, and the source is matched on the account's **last four
+digits** first, since sources are usually named for the account rather than
+exactly as the receipt spells the bank.
+
+### Why it is built this way
+
+- **Nothing is uploaded.** The engine, WASM core and English model are served
+  from this app's own origin (`public/ocr/`, ~6.6 MB) instead of the library's
+  default CDN, so the feature makes no third-party request and the screenshot
+  never leaves the device. Verified by asserting no request leaves the origin.
+- **Lazy and excluded from the precache.** `globIgnores: ['**/ocr/**']` keeps
+  the install at ~850 KB; the engine is fetched on first use and cached by the
+  service worker after that. A second read reuses the warm worker and refetches
+  nothing.
+- **The core is pinned** to one build rather than letting Tesseract probe for a
+  variant, and its paths are absolute — handed to a web worker, a relative path
+  would resolve against the worker's own URL and 404 under a `/<repo>/` subpath.
+
+**On iPhone this is a picker, not a share sheet.** iOS Safari does not
+implement Web Share Target, so an installed PWA cannot be a share destination:
+pick the screenshot from Photos, or paste it. Needs WASM SIMD (Safari 16.4+).
+
 ## Cleaning up imported history
 
 Hand-kept sheets usually mix the fund source and the purpose into one
