@@ -66,6 +66,7 @@ one you export from next.
 | Screen | Answers |
 |---|---|
 | **Summary** | The dashboard: what has been spent, when, on what, from where |
+| **Settings** | Customisation first, then sync, backup, restore and Excel import |
 | **Properties** | What has each property cost, split by cost head, source and month |
 | **Ledger** | Every entry, filterable; reassign payee/source/cost head, or void |
 | **Add** | The hot path — one screen, one-handed, sticky property/source/cost head |
@@ -119,14 +120,14 @@ losing the device, loses everything.
 No account, no OAuth, no API key — the app writes a file and lets Drive's own
 client do the syncing.
 
-**On a Mac or PC (Chrome/Edge):** `Data → Choose a file in Drive`, and pick a
+**On a Mac or PC (Chrome/Edge):** `Settings → Choose a file in Drive`, and pick a
 location inside your Google Drive folder (`Google Drive › My Drive` in Finder —
 needs Drive for Desktop installed). The app remembers that file, so afterwards
 `Save to Drive now` is one click; it overwrites in place and Drive syncs the
 change and keeps the version history. iCloud Drive or Dropbox work identically —
 any synced folder will do.
 
-**On a phone:** `Data → Share backup` hands the file to the OS share sheet;
+**On a phone:** `Settings → Share backup` hands the file to the OS share sheet;
 choose **Drive** or **Save to Drive**. Files are dated, so successive shares sit
 alongside each other rather than overwriting.
 
@@ -154,7 +155,7 @@ accounts and API keys.
 
 ## Syncing with a Google account
 
-`Data & backup → Sync with Google`. Optional: signed out, the app behaves
+`Settings → Sync with Google`. Optional: signed out, the app behaves
 exactly as before and every entry stays on the device.
 
 **Dexie remains the source of truth for reads.** Firestore is a mirror, not the
@@ -302,7 +303,7 @@ apart between them:
 - **Delete** — refused while anything still references the entity, and refused
   for the last remaining source, cost head or property.
 
-Cost heads live at `/categories`, reachable from **Data & backup → Manage cost
+Cost heads live at `/categories`, reachable from **Settings → Customise → Cost
 heads**. That screen is where import cleanup usually happens: the wizard files
 whatever was in the chosen column as a cost head, so entries like
 `net banking main form` — really a source — end up among the real ones.

@@ -69,10 +69,10 @@ export default function Summary() {
       title="Summary"
       action={
         <Link
-          to="/data"
+          to="/settings"
           className="rounded-lg border border-line px-3 py-2.5 text-sm font-semibold"
         >
-          Data
+          Settings
         </Link>
       }
     >
@@ -142,6 +142,14 @@ export default function Summary() {
               />
               <Tile label="Paid to" value={`${payeeCount}`} hint={payeeCount === 1 ? 'payee' : 'payees'} />
             </div>
+
+            <Link
+              to="/properties"
+              className="flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 text-sm font-medium hover:bg-ground"
+            >
+              Properties &amp; budgets
+              <span aria-hidden className="text-lg leading-none text-muted">›</span>
+            </Link>
 
             <ChartCard
               title="Spend over time"

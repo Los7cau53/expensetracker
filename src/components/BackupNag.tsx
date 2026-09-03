@@ -19,7 +19,7 @@ export function BackupNag() {
   if (days !== null && days <= 7) return null
 
   return (
-    <Link to="/data" className="block rounded-xl border border-out/30 bg-out/5 px-4 py-3 text-sm">
+    <Link to="/settings" className="block rounded-xl border border-out/30 bg-out/5 px-4 py-3 text-sm">
       <strong className="font-semibold text-out">
         {days === null ? 'No backup yet' : `Last backup was ${days} days ago`}
       </strong>

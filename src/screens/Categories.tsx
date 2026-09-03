@@ -106,8 +106,8 @@ export default function Categories() {
           old entries but leave the picker when recording a payment.
         </p>
 
-        <Link to="/data" className="block px-1 text-sm text-accent">
-          ← Data &amp; backup
+        <Link to="/settings" className="block px-1 text-sm text-accent">
+          ← Settings
         </Link>
       </div>
     </Screen>

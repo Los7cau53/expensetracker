@@ -1,7 +1,7 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
 import AddEntry from './screens/AddEntry'
 import Categories from './screens/Categories'
-import Data from './screens/Data'
+import Settings from './screens/Settings'
 import Ledger from './screens/Ledger'
 import PayeeDetail from './screens/PayeeDetail'
 import Payees from './screens/Payees'
@@ -12,11 +12,11 @@ import Summary from './screens/Summary'
 
 const TABS = [
   { to: '/', label: 'Summary', icon: '◔' },
-  { to: '/properties', label: 'Property', icon: '◱' },
-  { to: '/add', label: 'Add', icon: '＋', prominent: true },
   { to: '/ledger', label: 'Ledger', icon: '≡' },
+  { to: '/add', label: 'Add', icon: '＋', prominent: true },
   { to: '/sources', label: 'Sources', icon: '⛁' },
   { to: '/payees', label: 'Payees', icon: '☺' },
+  { to: '/settings', label: 'Settings', icon: '⚙' },
 ]
 
 export default function App() {
@@ -31,7 +31,9 @@ export default function App() {
         <Route path="/sources/:id" element={<SourceDetail />} />
         <Route path="/payees" element={<Payees />} />
         <Route path="/payees/:id" element={<PayeeDetail />} />
-        <Route path="/data" element={<Data />} />
+        <Route path="/settings" element={<Settings />} />
+        {/* The old path: kept so links and bookmarks out in the wild still land. */}
+        <Route path="/data" element={<Settings />} />
         <Route path="/categories" element={<Categories />} />
       </Routes>
 

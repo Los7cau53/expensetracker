@@ -54,7 +54,7 @@ describe('app shell', () => {
       ['/add', 'Add payment'],
       ['/sources', 'Fund sources'],
       ['/payees', 'Paid to'],
-      ['/data', 'Data & backup'],
+      ['/settings', 'Settings'],
     ] as const) {
       renderApp(route)
       expect(await screen.findByRole('heading', { name: heading })).toBeTruthy()
@@ -353,8 +353,8 @@ describe('getting a backup into Google Drive', () => {
   it('offers the synced-folder route where a file picker exists', async () => {
     win.showSaveFilePicker = () => Promise.reject(new Error('not called'))
 
-    renderApp('/data')
-    await screen.findByRole('heading', { name: 'Data & backup' })
+    renderApp('/settings')
+    await screen.findByRole('heading', { name: 'Settings' })
 
     expect(await screen.findByText('Keep a copy in Google Drive')).toBeTruthy()
     expect(await screen.findByRole('button', { name: 'Choose a file in Drive' })).toBeTruthy()
@@ -371,8 +371,8 @@ describe('getting a backup into Google Drive', () => {
       shared.push(d as { files: File[] })
     }
 
-    renderApp('/data')
-    await screen.findByRole('heading', { name: 'Data & backup' })
+    renderApp('/settings')
+    await screen.findByRole('heading', { name: 'Settings' })
 
     const button = await screen.findByRole('button', { name: 'Share backup' })
     // Disabled until the snapshot is ready, since the handler cannot await one.
@@ -390,8 +390,8 @@ describe('getting a backup into Google Drive', () => {
   })
 
   it('says so plainly when neither route is available', async () => {
-    renderApp('/data')
-    await screen.findByRole('heading', { name: 'Data & backup' })
+    renderApp('/settings')
+    await screen.findByRole('heading', { name: 'Settings' })
 
     expect(
       await screen.findByText(/neither a file picker nor a share sheet/),
@@ -400,16 +400,16 @@ describe('getting a backup into Google Drive', () => {
   })
 
   it('keeps the restorable JSON distinct from the read-only CSV', async () => {
-    renderApp('/data')
-    await screen.findByRole('heading', { name: 'Data & backup' })
+    renderApp('/settings')
+    await screen.findByRole('heading', { name: 'Settings' })
     expect(await screen.findByText(/CSV is for reading in a spreadsheet/)).toBeTruthy()
   })
 })
 
 describe('backup card urgency', () => {
   it('does not alarm on a fresh install with nothing recorded', async () => {
-    renderApp('/data')
-    await screen.findByRole('heading', { name: 'Data & backup' })
+    renderApp('/settings')
+    await screen.findByRole('heading', { name: 'Settings' })
 
     expect(await screen.findByText(/Nothing recorded yet, so nothing to back up/)).toBeTruthy()
     expect(screen.queryByText(/never taken a backup/)).toBeNull()
@@ -427,8 +427,8 @@ describe('backup card urgency', () => {
       voided: 0, createdAt: 1, updatedAt: 1,
     } as never)
 
-    renderApp('/data')
-    await screen.findByRole('heading', { name: 'Data & backup' })
+    renderApp('/settings')
+    await screen.findByRole('heading', { name: 'Settings' })
     expect(await screen.findByText(/You have never taken a backup/)).toBeTruthy()
   })
 })
@@ -497,5 +497,45 @@ describe('creating a source', () => {
     await screen.findByRole('heading', { name: 'Fund sources' })
     // The rename lives one tap deeper; without this the screen reads read-only.
     expect(await screen.findByText(/Tap a source to rename it/)).toBeTruthy()
+  })
+})
+
+describe('finding the customisation screens', () => {
+  it('puts them at the top of Settings, not buried under backup', async () => {
+    renderApp('/settings')
+    await screen.findByRole('heading', { name: 'Settings' })
+
+    // The complaint that prompted this: cost heads lived several panels down
+    // inside a screen called "Data & backup".
+    const heading = await screen.findByText('Customise')
+    // Scoped to the card: "Payees" and "Sources" also name bottom tabs.
+    const card = within(heading.closest('section')!)
+    for (const label of ['Cost heads', 'Properties', 'Fund sources', 'Payees']) {
+      expect(card.getByText(label)).toBeTruthy()
+    }
+    expect(card.getByText('Cost heads').closest('a')).toHaveProperty('href')
+  })
+
+  it('keeps the old /data path working for existing links', async () => {
+    renderApp('/data')
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeTruthy()
+  })
+
+  it('reaches Properties from Summary, since it left the tab bar', async () => {
+    renderApp('/')
+    await screen.findByRole('heading', { name: 'Summary' })
+    // With no entries the dashboard shows its empty state, so seed one.
+    const [projects, sources, categories] = await Promise.all([
+      db.projects.toArray(), db.sources.toArray(), db.categories.toArray(),
+    ])
+    await db.txns.add({
+      date: '2026-03-01', amount: 1_000_00, projectId: projects[0].id,
+      sourceId: sources[0].id, categoryId: categories[0].id, voided: 0,
+    } as never)
+
+    cleanup()
+    renderApp('/')
+    await screen.findByRole('heading', { name: 'Summary' })
+    expect(await screen.findByText('Properties & budgets')).toBeTruthy()
   })
 })

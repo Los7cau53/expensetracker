@@ -34,7 +34,7 @@ const ImportWizard = lazy(() =>
   import('../components/ImportWizard').then((m) => ({ default: m.ImportWizard })),
 )
 
-export default function Data() {
+export default function Settings() {
   const [importing, setImporting] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -110,14 +110,45 @@ export default function Data() {
   }
 
   return (
-    <Screen title="Data & backup">
+    <Screen title="Settings">
       <div className="mx-auto max-w-2xl space-y-4">
+        {/* Customisation used to live inside a screen called "Data & backup",
+            several panels down. These sit at the top because they are what
+            someone opening Settings is usually looking for. */}
+        <Card className="p-4">
+          <h2 className="font-semibold">Customise</h2>
+          <p className="mt-1 text-sm text-muted">
+            Rename, merge, archive or delete the things payments are filed against.
+          </p>
+          <ul className="mt-3 divide-y divide-line">
+            {[
+              { to: '/categories', label: 'Cost heads', hint: 'What a payment was for' },
+              { to: '/properties', label: 'Properties', hint: 'Budgets and per-property spend' },
+              { to: '/sources', label: 'Fund sources', hint: 'Accounts money is paid from' },
+              { to: '/payees', label: 'Payees', hint: 'People and suppliers paid' },
+            ].map((row) => (
+              <li key={row.to}>
+                <Link
+                  to={row.to}
+                  className="flex items-center gap-3 py-2.5 first:pt-0 hover:opacity-70"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">{row.label}</span>
+                    <span className="block text-xs text-muted">{row.hint}</span>
+                  </span>
+                  <span aria-hidden className="shrink-0 text-lg leading-none text-muted">›</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        <SyncPanel />
+
         <div className="grid grid-cols-2 gap-3">
           <Stat label="Entries" value={txns.length} />
           <Stat label="Recorded" value={<Money paise={sum(txns.map((t) => t.amount))} />} />
         </div>
-
-        <SyncPanel />
 
         <Card
           // Only alarming once there is something to lose — a fresh install
@@ -341,24 +372,7 @@ export default function Data() {
         {status && <p className="rounded-lg bg-in/10 px-3 py-2 text-sm font-medium text-in">{status}</p>}
         {error && <p className="rounded-lg bg-out/10 px-3 py-2 text-sm font-medium text-out">{error}</p>}
 
-        <Card className="space-y-3 p-4">
-          <div>
-            <h2 className="font-semibold">Cost heads</h2>
-            <p className="mt-1 text-sm text-muted">
-              Rename, merge or archive the cost heads that payments are filed under. An import
-              turns whatever was in the chosen column into cost heads, so this is usually where
-              the cleanup happens.
-            </p>
-          </div>
-          <Link
-            to="/categories"
-            className="inline-block rounded-lg border border-line px-4 py-2.5 text-sm font-semibold"
-          >
-            Manage cost heads
-          </Link>
-        </Card>
-
-        <Link to="/properties" className="block px-1 text-sm text-accent">← Properties</Link>
+        <Link to="/" className="block px-1 text-sm text-accent">← Summary</Link>
       </div>
     </Screen>
   )

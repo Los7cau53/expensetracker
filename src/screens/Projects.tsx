@@ -35,7 +35,7 @@ export default function Projects() {
       title="Properties"
       action={
         <div className="flex gap-2">
-          <Link to="/data" className="rounded-lg border border-line px-3 py-2.5 text-sm font-semibold">
+          <Link to="/settings" className="rounded-lg border border-line px-3 py-2.5 text-sm font-semibold">
             Data
           </Link>
           <Button variant="secondary" onClick={() => setAdding((v) => !v)}>
