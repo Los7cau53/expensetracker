@@ -1,6 +1,6 @@
 import type { Id } from '../db/ids'
 import { db, type FundIn, type Txn } from '../db/schema'
-import { formatDate, todayStr } from './date'
+import { todayStr } from './date'
 
 const FORMAT = 'construction-expenses-backup'
 const FORMAT_VERSION = 1
@@ -357,12 +357,16 @@ export async function downloadCsv(): Promise<string> {
     id === undefined ? '' : xs.find((x) => x.id === id)?.name ?? ''
 
   const header = [
-    'Date', 'Property', 'Paid to', 'Role', 'For what', 'Paid from',
+    'Date (YYYY-MM-DD)', 'Property', 'Paid to', 'Role', 'For what', 'Paid from',
     'Amount (INR)', 'Note', 'Reference', 'Voided',
   ]
 
   const rows = txns.map((t) => [
-    formatDate(t.date),
+    // ISO here, not the app's dd/mm/yyyy. A spreadsheet opened under a
+    // US locale reads "02/09/2026" as 9 February, silently misdating every
+    // row of an export meant for a CA or a bank. ISO is unambiguous
+    // everywhere and sorts correctly as text.
+    t.date,
     name(projects, t.projectId),
     name(payees, t.payeeId),
     t.payeeId ? payees.find((p) => p.id === t.payeeId)?.role ?? '' : '',

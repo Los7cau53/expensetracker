@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coerceToDateStr, monthOf } from './date'
+import { coerceToDateStr, formatDate, monthOf } from './date'
 
 describe('coerceToDateStr', () => {
   it('passes through ISO dates', () => {
@@ -54,5 +54,24 @@ describe('coerceToDateStr', () => {
 describe('monthOf', () => {
   it('groups by calendar month', () => {
     expect(monthOf('2026-03-12')).toBe('2026-03')
+  })
+})
+
+describe('formatDate', () => {
+  it('renders day-first with padding', () => {
+    expect(formatDate('2026-03-12')).toBe('12/03/2026')
+    expect(formatDate('2026-09-02')).toBe('02/09/2026')
+    expect(formatDate('2026-12-31')).toBe('31/12/2026')
+  })
+
+  it('leaves storage alone — only display changes', () => {
+    // Dates are stored as YYYY-MM-DD so they sort and index correctly; the
+    // formatter must not be mistaken for the storage format.
+    expect(coerceToDateStr('12/03/2026')).toBe('2026-03-12')
+    expect(formatDate(coerceToDateStr('12/03/2026')!)).toBe('12/03/2026')
+  })
+
+  it('passes an unparseable value through rather than inventing one', () => {
+    expect(formatDate('not a date')).toBe('not a date')
   })
 })

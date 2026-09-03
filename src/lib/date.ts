@@ -21,15 +21,19 @@ export function isDateStr(s: unknown): boolean {
   return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
 }
 
-/** "12 Mar 2026" */
+/**
+ * "12/03/2026" — day first, the Indian convention, and the same order the
+ * date inputs show.
+ *
+ * Display only. Dates are stored as 'YYYY-MM-DD' throughout, which sorts
+ * lexicographically, indexes cleanly and is unambiguous in a backup file;
+ * formatting it away at the edges is the point of keeping the two separate.
+ */
 export function formatDate(s: DateStr): string {
   const [y, m, d] = s.split('-').map(Number)
   if (!y) return s
-  return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d)}/${pad(m)}/${y}`
 }
 
 /** '2026-03' -> 'Mar 2026', for month grouping headers. */

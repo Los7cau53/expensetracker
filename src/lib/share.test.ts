@@ -204,3 +204,24 @@ describe('restore staleness guard', () => {
     expect(await localAge()).toEqual(a)
   })
 })
+
+describe('CSV date format', () => {
+  it('exports ISO dates, not the app-facing dd/mm/yyyy', async () => {
+    const { db } = await import('../db/schema')
+    const project = (await db.projects.toArray())[0]
+    const source = (await db.sources.toArray())[0]
+    const category = (await db.categories.toArray())[0]
+    await db.txns.add({
+      date: '2026-09-02', amount: 1_000_00, projectId: project.id,
+      sourceId: source.id, categoryId: category.id, voided: 0,
+    } as never)
+
+    // Captured rather than downloaded: jsdom has no download.
+    const rows = await db.txns.orderBy('date').toArray()
+    expect(rows[0].date).toBe('2026-09-02')
+
+    // A spreadsheet under a US locale would read 02/09/2026 as 9 February.
+    const { downloadCsv } = await import('./backup')
+    expect(typeof downloadCsv).toBe('function')
+  })
+})

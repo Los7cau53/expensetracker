@@ -225,6 +225,24 @@ npx firebase-tools deploy --only firestore:rules --project construction-tracker-
 `los7cau53.github.io` must also be listed under **Authentication → Settings →
 Authorized domains**.
 
+## Dates
+
+Displayed as **dd/mm/yyyy** throughout, matching the order the date inputs
+already show.
+
+Stored as `YYYY-MM-DD` everywhere internally (`src/lib/date.ts`) — it sorts
+lexicographically, indexes cleanly in IndexedDB, carries no timezone, and is
+unambiguous inside a backup file. Formatting happens only at the edges, which
+is the point of keeping the two apart.
+
+The **CSV export deliberately keeps ISO dates**, unlike the rest of the app. A
+spreadsheet opened under a US locale reads `02/09/2026` as 9 February, silently
+misdating every row of an export meant for a CA or a bank. Its header column
+says `Date (YYYY-MM-DD)` so nobody has to guess.
+
+Month labels ("Aug 2026" in ledger group headers, "Aug" on the chart axis) stay
+as month names — they are months, not dates.
+
 ## Changing an entry after the fact
 
 **Payments** are edited in the Ledger: tap a row to reassign payee, cost head,
