@@ -238,7 +238,8 @@ function TxnRow({
 
   async function saveEdits() {
     const paise = amount.trim() ? parseAmountToPaise(amount) : txn.amount
-    if (paise === null) return
+    // Negatives are fine here — a reversal. Zero is not: it records nothing.
+    if (paise === null || paise === 0) return
     await db.txns.update(txn.id, {
       amount: paise,
       date,

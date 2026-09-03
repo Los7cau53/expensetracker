@@ -504,6 +504,25 @@ exactly as the receipt spells the bank.
 implement Web Share Target, so an installed PWA cannot be a share destination:
 pick the screenshot from Photos, or paste it. Needs WASM SIMD (Safari 16.4+).
 
+## Reversals
+
+A payment can be negative. Reversed online payments happen, and a refund has to
+reduce net spend rather than add to it — so a negative amount is a first-class
+entry, not an error.
+
+The importer always kept negatives and every total already netted them; the Add
+screen was the one place that refused, which made the two paths disagree.
+
+Two safeguards, because a stray minus should not quietly become a reversal:
+
+- The field turns red and says "Recorded as a reversal: it reduces net spend
+  and puts the money back on the source."
+- **Zero is still rejected** — it records nothing.
+
+There is also a **sign toggle** beside the amount rather than only a typed
+minus: iOS's decimal keypad has no minus key, so on a phone the sign would
+otherwise be unreachable.
+
 ## Creating as you go
 
 Every dimension on the Add screen — property, payee, cost head, source — is a

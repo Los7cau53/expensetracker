@@ -544,3 +544,92 @@ describe('finding the customisation screens', () => {
     expect(await screen.findByText('Properties & budgets')).toBeTruthy()
   })
 })
+
+describe('recording a reversal', () => {
+  async function fillMinimum(user: ReturnType<typeof userEvent.setup>) {
+    // The cost head is sticky between entries, so the picker may already be
+    // collapsed onto a previous choice.
+    const group = within(screen.getByRole('group', { name: 'For what' }))
+    const change = group.queryByRole('button', { name: 'Change' })
+    if (change) return
+    const box = group.getByPlaceholderText('Permissions, masonry, cement…')
+    await user.type(box, 'Build Permit')
+    await user.click(await group.findByText(/Add “Build Permit”/))
+  }
+
+  it('accepts a negative amount and stores it signed', async () => {
+    const user = userEvent.setup()
+    renderApp('/add')
+    await screen.findByRole('heading', { name: 'Add payment' })
+
+    await user.type(screen.getByLabelText('Amount in rupees'), '-141007')
+    await fillMinimum(user)
+
+    // The importer always kept negatives and every total nets them; this
+    // screen used to be the only place that refused.
+    const save = screen.getByRole('button', { name: /Save & add another/ })
+    expect(save.hasAttribute('disabled')).toBe(false)
+    await user.click(save)
+
+    await waitFor(async () => expect(await db.txns.count()).toBe(1))
+    expect((await db.txns.toArray())[0].amount).toBe(-1_41_007_00)
+  })
+
+  it('says plainly what a negative will do', async () => {
+    const user = userEvent.setup()
+    renderApp('/add')
+    await screen.findByRole('heading', { name: 'Add payment' })
+
+    await user.type(screen.getByLabelText('Amount in rupees'), '-500')
+
+    // A stray minus must not quietly become a reversal.
+    expect(await screen.findByText(/Recorded as a reversal/)).toBeTruthy()
+  })
+
+  it('offers a sign toggle, since the iOS keypad has no minus', async () => {
+    const user = userEvent.setup()
+    renderApp('/add')
+    await screen.findByRole('heading', { name: 'Add payment' })
+
+    await user.type(screen.getByLabelText('Amount in rupees'), '141007')
+    await user.click(screen.getByRole('button', { name: 'Make this a reversal or refund' }))
+
+    expect((screen.getByLabelText('Amount in rupees') as HTMLInputElement).value).toBe('-141007')
+    // And back again.
+    await user.click(screen.getByRole('button', { name: 'Make this a payment out' }))
+    expect((screen.getByLabelText('Amount in rupees') as HTMLInputElement).value).toBe('141007')
+  })
+
+  it('still refuses zero, which records nothing', async () => {
+    const user = userEvent.setup()
+    renderApp('/add')
+    await screen.findByRole('heading', { name: 'Add payment' })
+
+    await user.type(screen.getByLabelText('Amount in rupees'), '0')
+    await fillMinimum(user)
+
+    expect(await screen.findByText('Zero records nothing.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Save$/ }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('a reversal puts the money back on the source', async () => {
+    const user = userEvent.setup()
+    const source = (await db.sources.toArray())[0]
+    await db.fundIns.add({
+      date: '2026-01-01', sourceId: source.id, amount: 5_00_000_00, origin: 'Loan',
+    } as never)
+
+    renderApp('/add')
+    await screen.findByRole('heading', { name: 'Add payment' })
+    await user.type(screen.getByLabelText('Amount in rupees'), '-141007')
+    await fillMinimum(user)
+    await user.click(screen.getByRole('button', { name: /Save & add another/ }))
+    await waitFor(async () => expect(await db.txns.count()).toBe(1))
+
+    const { sourceBalances } = await import('../db/queries')
+    const balance = (await sourceBalances()).find((b) => b.source.id === source.id)!
+    // Outflow goes *down* by the reversal, so the balance goes up.
+    expect(balance.outflow).toBe(-1_41_007_00)
+    expect(balance.balance).toBe(5_00_000_00 + 1_41_007_00)
+  })
+})

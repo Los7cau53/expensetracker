@@ -67,10 +67,20 @@ export default function AddEntry() {
   const paise = parseAmountToPaise(amount)
   const selectedPayee = payees.find((p) => p.id === payeeId)
 
-  const canSave = paise !== null && paise > 0 && effectiveProject && effectiveSource && categoryId
+  const negative = paise !== null && paise < 0
+  // Negatives are allowed: a reversed online payment or a refund has to reduce
+  // net spend. The importer has always kept them and every total already nets
+  // them; only this screen refused, so the two disagreed. Zero is still
+  // rejected — it records nothing.
+  const canSave =
+    paise !== null && paise !== 0 && effectiveProject && effectiveSource && categoryId
 
   async function save(andAnother: boolean) {
     setError(null)
+    if (paise === 0) {
+      setError('An amount of zero records nothing.')
+      return
+    }
     if (!canSave) {
       setError('Enter an amount and pick a project, category and source.')
       return
@@ -185,20 +195,48 @@ export default function AddEntry() {
           <p className="rounded-lg bg-in/10 px-3 py-2 text-xs text-muted">{created}</p>
         )}
 
-        <Field label="Amount paid">
-          <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            inputMode="decimal"
-            autoFocus
-            placeholder="0"
-            aria-label="Amount in rupees"
-            className="tnum w-full rounded-xl border border-line bg-surface px-4 py-4 text-4xl font-semibold outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-          />
+        <FieldGroup label="Amount paid">
+          <div className="flex items-stretch gap-2">
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              inputMode="decimal"
+              autoFocus
+              placeholder="0"
+              aria-label="Amount in rupees"
+              className={`tnum min-w-0 flex-1 rounded-xl border bg-surface px-4 py-4 text-4xl font-semibold outline-none focus:ring-2 focus:ring-accent/20 ${
+                negative ? 'border-out text-out' : 'border-line focus:border-accent'
+              }`}
+            />
+            {/* A sign toggle, not just a typed minus: iOS's decimal keypad has
+                no minus key, so on a phone the sign is otherwise unreachable. */}
+            <button
+              type="button"
+              onClick={() => setAmount((v) => (v.trim().startsWith('-') ? v.replace(/^\s*-/, '') : `-${v.trim()}`))}
+              aria-label={negative ? 'Make this a payment out' : 'Make this a reversal or refund'}
+              aria-pressed={negative}
+              className={`w-16 shrink-0 rounded-xl border text-2xl font-semibold transition ${
+                negative
+                  ? 'border-out bg-out/10 text-out'
+                  : 'border-line bg-surface text-muted hover:bg-ground'
+              }`}
+            >
+              {negative ? '−' : '+'}
+            </button>
+          </div>
+
+          {negative && (
+            <span className="mt-1 block text-xs text-out">
+              Recorded as a reversal: it reduces net spend and puts the money back on the source.
+            </span>
+          )}
           {amount && paise === null && (
             <span className="mt-1 block text-xs text-out">Not a valid amount.</span>
           )}
-        </Field>
+          {paise === 0 && amount.trim() !== '' && (
+            <span className="mt-1 block text-xs text-out">Zero records nothing.</span>
+          )}
+        </FieldGroup>
 
         <div className="grid grid-cols-2 gap-3">
           <FieldGroup label="Date">
