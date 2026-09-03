@@ -263,20 +263,33 @@ unconditionally would lock both out of every edit, including fixing their type.
 field editable. The one thing it never guesses is the cost head — a receipt
 cannot know what the money was for.
 
-Two independent passes, because they fail in different places:
+**On-device OCR of the image is the path that has to work**, because a
+screenshot taken with the volume buttons is named `IMG_4821.PNG` and carries
+nothing. Amount, date, time, payee, bank and UPI reference are all recovered
+from the pixels alone — verified against a real receipt under three filename
+styles (`IMG_4821.PNG`, `Screenshot_20260827-174233.png`, and the re-encoded
+`image.jpg` iOS produces when picking from Photos), each in about 1.4s.
 
-1. **The filename**, parsed instantly and exactly. A file shared out of Google
-   Pay is named `1787832753 - 16000.00 To prakash Raj Raj on Google Pay.png`,
-   which carries the epoch timestamp, the amount and the payee — no OCR, no
-   guessing. A screenshot taken with the volume buttons carries none of this.
-2. **On-device OCR** of the image, which is the only place the bank account and
-   the UPI reference exist. Also the fallback for everything when the filename
-   is bare.
+**The filename is a bonus, not the mechanism.** A file shared out of Google Pay
+happens to be named
+`1787832753 - 16000.00 To prakash Raj Raj on Google Pay.png`, carrying the
+epoch timestamp, amount and payee exactly. Where present it is preferred over
+OCR — data beats a reading of pixels — but nothing depends on it.
 
 Each extracted field is labelled with where it came from, and the raw OCR text
 is shown under "What the reader saw" so a misread is visible rather than
 silent. The reader also refuses to be quiet about a receipt that says **failed**
 or **pending**, and flags one that reads as money *received* rather than spent.
+
+Reading the amount is the fiddly part. OCR **drops the rupee sign entirely**
+("₹16,000" comes back as "16,000"), and Google Pay writes no grouping comma
+below a thousand — so demanding a currency marker would silently lose every
+payment under ₹1,000, and construction is full of them. Candidates are scored
+by position instead: the amount sits high on a receipt, just under the payee,
+while identifiers sit far below. Lines carrying `+91`, `@`, `UPI` or a
+ten-digit-plus run are excluded outright, which is what keeps the masked phone
+number's tail (`26202` — numerically *larger* than the real 16,000) from
+winning.
 
 Matching: the payee is matched onto an existing one case-insensitively before a
 new one is created, and the source is matched on the account's **last four

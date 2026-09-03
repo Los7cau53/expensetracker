@@ -139,9 +139,25 @@ describe('amount picking', () => {
     expect(f.amount).toBeUndefined()
   })
 
-  it('ignores a bare digit run with no currency marker', () => {
-    // Could be an id, a reference or a masked number — never assume rupees.
-    expect(parseGpayText('To X\n26202').amount).toBeUndefined()
+  it('reads a bare number near the top, since OCR drops the rupee sign', () => {
+    // Google Pay writes no comma below a thousand and OCR loses the ₹, so a
+    // demand for a currency marker would miss every payment under ₹1,000 —
+    // and construction is full of them.
+    expect(parseGpayText('To Tree cutter\n500\nCompleted\n28 Aug 2026').amount).toBe(500_00)
+    expect(parseGpayText('To X\n₹500').amount).toBe(500_00)
+  })
+
+  it('still ignores digits that sit in identifier context', () => {
+    // The masked phone number shares its line with "+91".
+    expect(parseGpayText('To X\n+91 ..... 26202\n1,000').amount).toBe(1_000_00)
+    // A 12-digit reference is never money.
+    expect(parseGpayText('To X\n660550753690').amount).toBeUndefined()
+    expect(parseGpayText('To X\nUPI transaction ID\n660550753690').amount).toBeUndefined()
+  })
+
+  it('ignores a bare digit run buried far down the receipt', () => {
+    const deep = ['To X', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', '904321']
+    expect(parseGpayText(deep.join('\n')).amount).toBeUndefined()
   })
 })
 

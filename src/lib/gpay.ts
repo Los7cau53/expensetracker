@@ -4,16 +4,19 @@ import { parseAmountToPaise, type Paise } from './money'
 /**
  * Reads a Google Pay receipt, from its filename and from OCR of the image.
  *
- * Two independent sources, because they fail in different places. A file
- * shared out of Google Pay is named
+ * OCR of the image is the path that has to work, because a screenshot taken
+ * with the volume buttons is named IMG_4821.PNG and carries nothing. Every
+ * field — amount, date, time, payee, bank, reference — is recoverable from the
+ * pixels alone, and is verified that way against a real receipt.
+ *
+ * The filename is a bonus, not the mechanism. A file shared out of Google Pay
+ * happens to be named
  *
  *   1787832753 - 16000.00 To prakash Raj Raj on Google Pay.png
  *
- * which carries the epoch timestamp, the amount and the payee exactly — no OCR
- * needed, no guessing. What it never carries is the bank the money left and
- * the UPI reference, and those only exist inside the image. A plain screenshot
- * taken with the volume buttons carries nothing in its name, so OCR is also
- * the fallback for everything.
+ * carrying the epoch timestamp, amount and payee exactly. Where that is
+ * present it is preferred over OCR, since it is data rather than a reading of
+ * pixels — but nothing depends on it.
  */
 
 export type Direction = 'out' | 'in'
@@ -181,36 +184,49 @@ export function parseGpayText(text: string): ReceiptFields {
 
 /**
  * The amount, told apart from the phone number and the transaction IDs that
- * share the screen. Grouped or decimal-bearing numbers are the strong signal:
- * "16,000" is an amount, "26202" is the tail of a masked phone number and
- * happens to be the larger of the two.
+ * share the screen.
+ *
+ * Scored rather than pattern-gated, because OCR drops the rupee sign outright
+ * ("₹16,000" comes back as "16,000") and Google Pay writes no grouping comma
+ * below a thousand — so requiring a currency marker silently loses every
+ * payment under ₹1,000. Position carries the weight instead: the amount sits
+ * high on a receipt, just under the payee, while identifiers sit far below.
  */
 function pickAmount(lines: string[]): Paise | null {
-  const candidates: Paise[] = []
+  let bestPaise: Paise | null = null
+  let bestScore = 0
 
-  for (const line of lines) {
-    if (/\+91|transaction|@|upi\b/i.test(line)) continue
+  for (const [index, line] of lines.entries()) {
+    // Context that means this line is never the amount.
+    if (/\+91|transaction|@|\bupi\b|\bid\b/i.test(line)) continue
+    // A long digit run is a reference, not money.
+    if (/\d{10,}/.test(line.replace(/[,\s]/g, ''))) continue
 
     const m = line.match(/^[₹?%*\s]*([\d][\d,]*(?:\.\d{1,2})?)\s*$/)
     if (!m) continue
 
     const raw = m[1]
-    const grouped = raw.includes(',')
-    const decimal = raw.includes('.')
-    const hadSymbol = /₹/.test(line)
-    // A bare run of digits is far more likely an id or a masked number.
-    if (!grouped && !decimal && !hadSymbol) continue
-    // 12-digit UPI ids can carry commas after OCR; amounts here do not run
-    // past a crore.
     const paise = parseAmountToPaise(raw)
+    // Nothing here runs past a crore.
     if (paise === null || paise <= 0 || paise > 100_00_00_000_00) continue
-    candidates.push(paise)
+
+    let score = 0
+    if (/₹/.test(line)) score += 4
+    if (raw.includes(',')) score += 2
+    if (raw.includes('.')) score += 1
+    // Google Pay's layout: payee, masked number, then the amount.
+    if (index < 8) score += 2
+    else if (index < 12) score += 1
+
+    // A bare digit run far down the receipt is an identifier of some kind.
+    if (score < 2) continue
+    if (bestPaise === null || score > bestScore || (score === bestScore && paise > bestPaise)) {
+      bestPaise = paise
+      bestScore = score
+    }
   }
 
-  if (candidates.length === 0) return null
-  // Google Pay puts the amount in the largest type near the top; where several
-  // survive, the biggest is the total rather than a fee or a running balance.
-  return Math.max(...candidates)
+  return bestPaise
 }
 
 function pickReference(text: string): string | null {
