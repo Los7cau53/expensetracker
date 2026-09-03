@@ -3,9 +3,17 @@ import { db } from '../db/schema'
 import { syncOnce } from './engine'
 import { createFirestoreRemote } from './firestore'
 import { signInWithGoogle, signOutOfGoogle, watchUser, type User } from './firebase'
+import { isOwner } from './owners'
 import type { SyncResult } from './types'
 
-export type SyncStatus = 'signedOut' | 'idle' | 'syncing' | 'offline' | 'error'
+export type SyncStatus =
+  | 'signedOut'
+  | 'idle'
+  | 'syncing'
+  | 'offline'
+  | 'error'
+  /** Signed in, but with an account that is not on the allowlist. */
+  | 'notAllowed'
 
 const LAST_SYNC_KEY = 'lastSyncedAt'
 const SYNC_ENABLED_KEY = 'ce.syncEnabled'
@@ -57,7 +65,8 @@ export function useSync(): SyncState {
 
     void watchUser((u) => {
       setUser(u)
-      setStatus(u ? 'idle' : 'signedOut')
+      if (!u) setStatus('signedOut')
+      else setStatus(isOwner(u.email) ? 'idle' : 'notAllowed')
     })
       .then((unsub) => {
         if (cancelled) unsub()
@@ -82,6 +91,11 @@ export function useSync(): SyncState {
 
   const syncNow = useCallback(async () => {
     if (!user || running.current) return
+    // Attempting it would only earn a PERMISSION_DENIED from the rules.
+    if (!isOwner(user.email)) {
+      setStatus('notAllowed')
+      return
+    }
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setStatus('offline')
       return
@@ -106,7 +120,7 @@ export function useSync(): SyncState {
 
   // Sync on sign-in, on a timer, and whenever the app is brought back.
   useEffect(() => {
-    if (!user) return
+    if (!user || !isOwner(user.email)) return
     // Deferred for the same reason: syncNow sets state, and doing that
     // synchronously inside the effect starts a second render immediately.
     queueMicrotask(() => void syncNow())

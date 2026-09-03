@@ -1,16 +1,37 @@
 rules_version = '2';
 
-// A user's ledger is readable and writable only by that user.
+// Only the listed Google accounts may read or write anything, and each may
+// only touch documents under its own uid.
 //
-// Deploy with:  npx firebase-tools deploy --only firestore:rules \
-//                 --project construction-tracker-68275
+// Firebase Authentication has no built-in allowlist on the free plan — any
+// Google account can complete a sign-in against any project. That alone is not
+// a leak, because the uid check below isolates each user's documents, but it
+// does let strangers occupy the project. Pinning the identity here is the
+// enforcement; the matching list in the client is only there to give a clear
+// message instead of a bare PERMISSION_DENIED.
+//
+// To add someone later, add their address to `owners` and redeploy:
+//   npx firebase-tools deploy --only firestore:rules
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{uid}/records/{recordId} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+    function owners() {
+      return ['ratna.teja06@gmail.com'];
     }
 
-    // Nothing else is reachable.
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in owners();
+    }
+
+    match /users/{uid}/records/{recordId} {
+      // Both conditions matter: the allowlist keeps strangers out, and the uid
+      // check stops an owner writing into somebody else's space.
+      allow read, write: if isOwner() && request.auth.uid == uid;
+    }
+
+    // Nothing else in the database is reachable at all.
     match /{document=**} {
       allow read, write: if false;
     }

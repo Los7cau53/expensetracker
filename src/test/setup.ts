@@ -16,3 +16,20 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     disconnect() {}
   } as unknown as typeof ResizeObserver
 }
+
+// Neither Node nor this jsdom setup reliably provides localStorage, and the app
+// uses it for UI preferences. An in-memory stand-in keeps tests honest without
+// each one having to guard against its absence.
+if (typeof globalThis.localStorage === 'undefined') {
+  const store = new Map<string, string>()
+  globalThis.localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, String(v)),
+    removeItem: (k: string) => void store.delete(k),
+    clear: () => store.clear(),
+    key: (i: number) => [...store.keys()][i] ?? null,
+    get length() {
+      return store.size
+    },
+  } as Storage
+}

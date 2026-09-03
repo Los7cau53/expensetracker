@@ -189,12 +189,33 @@ precache (`globIgnores: ['**/firebase-*.js']`), so a session that never signs
 in never downloads it. Verified against the production build by asserting no
 request for it until sign-in is pressed. Install stays ~870 KB.
 
+### Who can sign in
+
+Firebase Authentication has no allowlist on the free plan: any Google account
+can complete a sign-in against any project. On its own that is not a leak —
+each user's documents sit under their own uid — but it does let strangers
+occupy the project.
+
+So `firestore.rules` pins the identity: a request must carry a **verified email
+on the `owners()` list** *and* be writing under its own uid. Both conditions
+matter — the list keeps strangers out, the uid check stops one owner writing
+into another's space. Everything else in the database is unreachable.
+
+`src/sync/owners.ts` carries the same list, but only to explain a rejection
+instead of surfacing a bare `PERMISSION_DENIED`; it is not the enforcement. The
+app also declines to contact the database at all for a non-owner account.
+
+Verified against the live project: an unauthenticated read returns
+`PERMISSION_DENIED`, and anonymous sign-up returns `ADMIN_ONLY_OPERATION`, so
+there is no way to obtain a token without a real Google sign-in.
+
+To add someone, add their address to `owners()` in `firestore.rules` **and** to
+`OWNER_EMAILS`, then redeploy the rules.
+
 ### Setup
 
 Firestore is in production mode, which denies everything by default, so
-`firestore.rules` must be deployed before sync can work. The rules scope every
-document to the Google account that owns it — `users/<uid>/records/<id>`,
-readable and writable only when `request.auth.uid == uid`.
+`firestore.rules` must be deployed before sync can work.
 
 ```bash
 npx firebase-tools login

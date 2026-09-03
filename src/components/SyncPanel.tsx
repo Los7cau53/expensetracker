@@ -1,4 +1,5 @@
 import { Button, Card } from './ui'
+import { OWNER_EMAILS } from '../sync/owners'
 import { useSync } from '../sync/useSync'
 
 /**
@@ -21,7 +22,24 @@ export function SyncPanel() {
         </p>
       </div>
 
-      {user ? (
+      {user && status === 'notAllowed' ? (
+        <>
+          <div className="rounded-lg border border-out/40 bg-out/5 px-3 py-2 text-sm">
+            <div className="font-semibold text-out">This account cannot sync</div>
+            <div className="mt-1 text-muted">
+              Signed in as <strong className="text-ink">{user.email}</strong>, which is not on the
+              allowlist. Only {OWNER_EMAILS.join(', ')} can read or write this ledger — enforced by
+              the database rules, not just here.
+            </div>
+            <div className="mt-1 text-muted">
+              Nothing on this device has changed, and it all still works offline.
+            </div>
+          </div>
+          <Button variant="secondary" onClick={() => void signOut()}>
+            Sign out and try another account
+          </Button>
+        </>
+      ) : user ? (
         <>
           <div className="rounded-lg border border-line bg-ground/50 px-3 py-2 text-sm">
             <div className="font-medium">{user.email ?? user.displayName ?? 'Signed in'}</div>
