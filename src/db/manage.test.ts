@@ -4,6 +4,8 @@ import { seedIfEmpty } from './seed'
 import { payeeTotals, sourceBalances, sum } from './queries'
 import {
   addCategory,
+  deleteFundIn,
+  updateFundIn,
   deleteCategory,
   deletePayee,
   deleteProject,
@@ -483,5 +485,77 @@ describe('properties', () => {
   it('rejects merging a property into itself', async () => {
     const { b } = await twoProjects()
     await expect(mergeProjects(b, b)).rejects.toThrow(/different property/)
+  })
+})
+
+describe('money-in entries', () => {
+  async function anInflow() {
+    const sourceId = (await db.sources.toArray())[0].id
+    const id = (await db.fundIns.add({
+      date: '2026-12-02', amount: 50_000_00, sourceId, origin: 'bank cash Sneha',
+    } as never)) as string
+    return { id, sourceId }
+  }
+
+  it('corrects a mistyped date and amount', async () => {
+    const { id } = await anInflow()
+
+    await updateFundIn(id, {
+      date: '2026-09-02',
+      amount: 45_000_00,
+      origin: 'bank cash Sneha',
+      note: 'corrected',
+    })
+
+    const row = (await db.fundIns.get(id))!
+    expect(row.date).toBe('2026-09-02')
+    expect(row.amount).toBe(45_000_00)
+    expect(row.note).toBe('corrected')
+  })
+
+  it('moves the source balance by exactly the correction', async () => {
+    const { id, sourceId } = await anInflow()
+    const before = (await sourceBalances()).find((b) => b.source.id === sourceId)!.balance
+
+    await updateFundIn(id, { date: '2026-09-02', amount: 45_000_00, origin: 'x' })
+
+    const after = (await sourceBalances()).find((b) => b.source.id === sourceId)!.balance
+    expect(before - after).toBe(5_000_00)
+  })
+
+  it('refuses a zero or negative amount, and a missing date', async () => {
+    const { id } = await anInflow()
+    await expect(updateFundIn(id, { date: '2026-09-02', amount: 0, origin: 'x' })).rejects.toThrow(
+      /more than zero/,
+    )
+    await expect(
+      updateFundIn(id, { date: '', amount: 1_000_00, origin: 'x' }),
+    ).rejects.toThrow(/needs a date/)
+  })
+
+  it('falls back to a label rather than an empty origin', async () => {
+    const { id } = await anInflow()
+    await updateFundIn(id, { date: '2026-09-02', amount: 1_000_00, origin: '   ' })
+    expect((await db.fundIns.get(id))!.origin).toBe('Funds in')
+  })
+
+  it('deletes one, dropping the balance by that much', async () => {
+    const { id, sourceId } = await anInflow()
+    const before = (await sourceBalances()).find((b) => b.source.id === sourceId)!.balance
+
+    await deleteFundIn(id)
+
+    expect(await db.fundIns.get(id)).toBeUndefined()
+    const after = (await sourceBalances()).find((b) => b.source.id === sourceId)!.balance
+    expect(before - after).toBe(50_000_00)
+  })
+
+  it('leaves a tombstone, so the other device drops it too', async () => {
+    const { id } = await anInflow()
+    await deleteFundIn(id)
+
+    const stone = await db.tombstones.get(`fundIns:${id}`)
+    expect(stone?.table).toBe('fundIns')
+    expect(stone?.recordId).toBe(id)
   })
 })

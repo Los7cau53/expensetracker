@@ -1,4 +1,5 @@
 import type { Id } from './ids'
+import type { DateStr } from '../lib/date'
 import {
   db,
   type Category,
@@ -194,6 +195,46 @@ async function assertNameFree(
   if (norm(name) === norm(current.name)) return
   const clash = rows.find((r) => r.id !== id && norm(r.name) === norm(name))
   if (clash) throw new Error(`"${clash.name}" already exists. Merge into it instead.`)
+}
+
+// --- fund inflows ---------------------------------------------------------
+
+export interface FundInEdits {
+  date: DateStr
+  amount: Paise
+  origin: string
+  note?: string
+  projectId?: Id
+}
+
+/**
+ * Inflows were create-only, so a mistyped date or amount could not be
+ * corrected — and a wrong inflow silently misstates the source's balance,
+ * which is the one number the Sources screen exists to report.
+ */
+export async function updateFundIn(fundInId: Id, edits: FundInEdits): Promise<void> {
+  if (edits.amount <= 0) throw new Error('An inflow has to be more than zero.')
+  if (!edits.date) throw new Error('An inflow needs a date.')
+
+  await db.fundIns.update(fundInId, {
+    date: edits.date,
+    amount: edits.amount,
+    origin: edits.origin.trim() || 'Funds in',
+    note: edits.note?.trim() || undefined,
+    projectId: edits.projectId,
+  })
+}
+
+/**
+ * Removes an inflow. Unlike a payment this is a real delete rather than a
+ * void: an inflow records that money arrived, and a wrong one has no history
+ * worth preserving — where a payment might be disputed with a contractor.
+ */
+export async function deleteFundIn(fundInId: Id): Promise<void> {
+  await db.transaction('rw', [db.fundIns, db.tombstones], async () => {
+    await db.fundIns.delete(fundInId)
+    await recordDeletion('fundIns', [fundInId])
+  })
 }
 
 // --- payees ---------------------------------------------------------------

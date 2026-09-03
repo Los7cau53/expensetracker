@@ -225,6 +225,24 @@ npx firebase-tools deploy --only firestore:rules --project construction-tracker-
 `los7cau53.github.io` must also be listed under **Authentication → Settings →
 Authorized domains**.
 
+## Changing an entry after the fact
+
+**Payments** are edited in the Ledger: tap a row to reassign payee, cost head,
+source or property, change the amount or date, or void it. Voiding rather than
+deleting keeps the row visible in history, because a payment might later be
+disputed with a contractor.
+
+**Money-in entries** are edited on the source's own screen: tap the line. Those
+rows were create-only for a while, which meant a mistyped date or amount could
+not be corrected — and a wrong inflow silently misstates the source balance,
+the one number that screen exists to report.
+
+Deleting an inflow is a real delete, not a void: it records that money arrived,
+and a wrong one has no history worth keeping.
+
+Payment lines on a source's statement link to the Ledger rather than offering a
+second, half-featured editor — the payee, cost head and property all live there.
+
 ## Repair and reset
 
 `Settings → Repair`.
