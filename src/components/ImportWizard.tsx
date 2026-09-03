@@ -17,6 +17,7 @@ import {
 } from '../lib/excelImport'
 import { todayStr } from '../lib/date'
 import { formatPaise } from '../lib/money'
+import { byCreated } from '../db/ids'
 import { db } from '../db/schema'
 import { Button, Card, Field, Money, Select, TextInput } from './ui'
 
@@ -53,8 +54,9 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string | null>(null)
 
-  const projects = useLiveQuery(() => db.projects.toArray(), [], [])
-  const sources = useLiveQuery(() => db.sources.toArray(), [], [])
+  // The import's fallbacks are taken from [0], so the order must be defined.
+  const projects = useLiveQuery(async () => byCreated(await db.projects.toArray()), [], [])
+  const sources = useLiveQuery(async () => byCreated(await db.sources.toArray()), [], [])
   const categories = useLiveQuery(() => db.categories.orderBy('sortOrder').toArray(), [], [])
 
   const sheet = sheets?.[sheetIndex]

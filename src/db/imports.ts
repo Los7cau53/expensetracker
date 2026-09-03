@@ -1,3 +1,4 @@
+import type { Id } from './ids'
 import { db } from './schema'
 
 export interface UndoResult {
@@ -15,7 +16,7 @@ export interface UndoResult {
  * place: they are harmless empty entries, and removing them could orphan
  * rows entered by hand since.
  */
-export async function undoImport(batchId: number): Promise<UndoResult> {
+export async function undoImport(batchId: Id): Promise<UndoResult> {
   return db.transaction('rw', [db.txns, db.fundIns, db.importBatches], async () => {
     const txns = await db.txns.where('importBatchId').equals(batchId).delete()
     const fundIns = await db.fundIns.where('importBatchId').equals(batchId).delete()

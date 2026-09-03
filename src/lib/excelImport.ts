@@ -1,3 +1,4 @@
+import type { Id } from '../db/ids'
 import * as XLSX from 'xlsx'
 import { db } from '../db/schema'
 import { guessPayeeRole, guessSourceType } from './infer'
@@ -327,9 +328,9 @@ export interface CommitOptions {
   sheetName: string
   headerRow: number
   mapping: Mapping
-  fallbackProjectId: number
-  fallbackSourceId: number
-  fallbackCategoryId: number
+  fallbackProjectId: Id
+  fallbackSourceId: Id
+  fallbackCategoryId: Id
   /**
    * Created if missing and used for rows with no category of their own.
    * In sheets organised one-tab-per-job, the tab name IS the cost head.
@@ -338,7 +339,7 @@ export interface CommitOptions {
 }
 
 export interface CommitResult {
-  batchId: number
+  batchId: Id
   inserted: number
   created: Record<'projects' | 'payees' | 'categories' | 'sources', number>
   /** True when the rows were written as fund inflows rather than payments. */
@@ -376,12 +377,12 @@ export async function commitImport(
         importedAt: Date.now(),
         rowCount: analysis.valid.length,
         mapping: JSON.stringify({ headerRow: opts.headerRow, mapping: opts.mapping }),
-      } as never)) as number
+      } as never)) as string
 
       // Existing names are matched case-insensitively so an import does not
       // create a second "Cement traders" alongside the one already there.
       const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
-      const index = async <T extends { id: number; name: string }>(rows: T[]) =>
+      const index = async <T extends { id: Id; name: string }>(rows: T[]) =>
         new Map(rows.map((r) => [norm(r.name), r.id]))
 
       const projectIds = await index(await db.projects.toArray())
@@ -401,7 +402,7 @@ export async function commitImport(
           fallbackCategoryId = (await db.categories.add({
             name: wanted,
             sortOrder: categorySort++,
-          } as never)) as number
+          } as never)) as string
           categoryIds.set(norm(wanted), fallbackCategoryId)
           created.categories++
         }
@@ -416,7 +417,7 @@ export async function commitImport(
           name,
           status: 'active',
           createdAt: Date.now(),
-        } as never)) as number
+        } as never)) as string
         projectIds.set(norm(name), id)
         created.projects++
         return id
@@ -432,7 +433,7 @@ export async function commitImport(
           role: guessPayeeRole(name),
           archived: 0,
           createdAt: Date.now(),
-        } as never)) as number
+        } as never)) as string
         payeeIds.set(norm(name), id)
         created.payees++
         return id
@@ -446,7 +447,7 @@ export async function commitImport(
         const id = (await db.categories.add({
           name,
           sortOrder: categorySort++,
-        } as never)) as number
+        } as never)) as string
         categoryIds.set(norm(name), id)
         created.categories++
         return id
@@ -463,7 +464,7 @@ export async function commitImport(
           openingBalance: 0,
           archived: 0,
           createdAt: Date.now(),
-        } as never)) as number
+        } as never)) as string
         sourceIds.set(norm(name), id)
         created.sources++
         return id

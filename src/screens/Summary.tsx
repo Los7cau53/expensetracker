@@ -1,3 +1,4 @@
+import type { Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link } from 'react-router-dom'
 import { BackupNag } from '../components/BackupNag'
@@ -27,7 +28,7 @@ function rangeStart(key: RangeKey): string | undefined {
 
 export default function Summary() {
   // Filters live above every widget and scope all of them, so the numbers agree.
-  const [projectId, setProjectId] = usePref<number | undefined>('summaryProject', undefined)
+  const [projectId, setProjectId] = usePref<Id | undefined>('summaryProject', undefined)
   const [range, setRange] = usePref<RangeKey>('summaryRange', 'all')
 
   const projects = useLiveQuery(() => db.projects.toArray(), [], [])
@@ -83,7 +84,7 @@ export default function Summary() {
           <Select
             aria-label="Property"
             value={projectId ?? ''}
-            onChange={(e) => setProjectId(e.target.value ? Number(e.target.value) : undefined)}
+            onChange={(e) => setProjectId(e.target.value || undefined)}
             className="!w-auto !py-2 !text-sm"
           >
             <option value="">All properties</option>

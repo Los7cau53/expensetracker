@@ -1,3 +1,4 @@
+import { byCreated, type Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -14,9 +15,19 @@ import { usePref } from '../lib/prefs'
 export default function AddEntry() {
   const navigate = useNavigate()
 
-  const projects = useLiveQuery(() => db.projects.toArray(), [], [])
-  const sources = useLiveQuery(() => db.sources.where('archived').equals(0).toArray(), [], [])
-  const payees = useLiveQuery(() => db.payees.where('archived').equals(0).toArray(), [], [])
+  // Explicitly ordered: UUID primary keys give no meaningful default order,
+  // and these lists decide which project and source a new entry defaults to.
+  const projects = useLiveQuery(async () => byCreated(await db.projects.toArray()), [], [])
+  const sources = useLiveQuery(
+    async () => byCreated(await db.sources.where('archived').equals(0).toArray()),
+    [],
+    [],
+  )
+  const payees = useLiveQuery(
+    async () => byCreated(await db.payees.where('archived').equals(0).toArray()),
+    [],
+    [],
+  )
   const categories = useLiveQuery(
     // Archived cost heads stay on old entries but leave the picker.
     () => db.categories.orderBy('sortOrder').filter((c) => !c.archived).toArray(),
@@ -27,13 +38,13 @@ export default function AddEntry() {
   // Project, source and category persist between entries: at a site you record
   // six payments in a row against the same property, and re-picking each time
   // is the friction that sends people back to a notebook.
-  const [projectId, setProjectId] = usePref<number | undefined>('lastProject', undefined)
-  const [sourceId, setSourceId] = usePref<number | undefined>('lastSource', undefined)
-  const [categoryId, setCategoryId] = usePref<number | undefined>('lastCategory', undefined)
+  const [projectId, setProjectId] = usePref<Id | undefined>('lastProject', undefined)
+  const [sourceId, setSourceId] = usePref<Id | undefined>('lastSource', undefined)
+  const [categoryId, setCategoryId] = usePref<Id | undefined>('lastCategory', undefined)
 
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(todayStr())
-  const [payeeId, setPayeeId] = useState<number | undefined>()
+  const [payeeId, setPayeeId] = useState<Id | undefined>()
   const [note, setNote] = useState('')
   const [refNo, setRefNo] = useState('')
   const [saved, setSaved] = useState<string | null>(null)
@@ -108,7 +119,7 @@ export default function AddEntry() {
           role: guessPayeeRole(f.payee),
           archived: 0,
           createdAt: Date.now(),
-        } as never)) as number
+        } as never)) as string
         setPayeeId(id)
         notes.push(`added "${f.payee}" as a new payee`)
       }
@@ -143,7 +154,7 @@ export default function AddEntry() {
       role: guessPayeeRole(name),
       archived: 0,
       createdAt: Date.now(),
-    } as never)) as number
+    } as never)) as string
   }
 
   async function setPayeeRole(role: PayeeRole) {
@@ -187,7 +198,7 @@ export default function AddEntry() {
           <Field label="Property">
             <Select
               value={effectiveProject ?? ''}
-              onChange={(e) => setProjectId(Number(e.target.value))}
+              onChange={(e) => setProjectId(e.target.value)}
             >
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -233,7 +244,7 @@ export default function AddEntry() {
         <Field label="Paid from">
           <Select
             value={effectiveSource ?? ''}
-            onChange={(e) => setSourceId(Number(e.target.value))}
+            onChange={(e) => setSourceId(e.target.value)}
           >
             {sources.map((s) => (
               <option key={s.id} value={s.id}>

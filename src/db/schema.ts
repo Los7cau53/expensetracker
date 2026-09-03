@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import { newId, type Id } from './ids'
 import type { DateStr } from '../lib/date'
 import type { Paise } from '../lib/money'
 
@@ -27,7 +28,7 @@ export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
 export type Flag = 0 | 1
 
 export interface Project {
-  id: number
+  id: Id
   name: string
   address?: string
   status: ProjectStatus
@@ -37,7 +38,7 @@ export interface Project {
 
 /** Where money comes FROM: a bank account, cash in hand, a UPI app, a loan. */
 export interface Source {
-  id: number
+  id: Id
   name: string
   type: SourceType
   institution?: string
@@ -49,7 +50,7 @@ export interface Source {
 
 /** Whom money is given TO: mestri, electrician, supplier, government office. */
 export interface Payee {
-  id: number
+  id: Id
   name: string
   role: PayeeRole
   phone?: string
@@ -59,7 +60,7 @@ export interface Payee {
 }
 
 export interface Category {
-  id: number
+  id: Id
   name: string
   sortOrder: number
   /** Archived cost heads stay on old entries but leave the picker. */
@@ -71,16 +72,16 @@ export interface Category {
  * correction sets voided=1 so the history survives a dispute with a contractor.
  */
 export interface Txn {
-  id: number
+  id: Id
   date: DateStr
-  projectId: number
+  projectId: Id
   amount: Paise
-  sourceId: number
-  payeeId?: number
-  categoryId: number
+  sourceId: Id
+  payeeId?: Id
+  categoryId: Id
   note?: string
   refNo?: string
-  importBatchId?: number
+  importBatchId?: Id
   voided: Flag
   voidedAt?: number
   createdAt: number
@@ -92,20 +93,20 @@ export interface Txn {
  * Without these a source has no meaningful balance, only a running outflow.
  */
 export interface FundIn {
-  id: number
+  id: Id
   date: DateStr
-  sourceId: number
+  sourceId: Id
   amount: Paise
   origin: string
-  projectId?: number
+  projectId?: Id
   note?: string
   /** Set when the row came from a spreadsheet import, so it can be undone. */
-  importBatchId?: number
+  importBatchId?: Id
   createdAt: number
 }
 
 export interface ImportBatch {
-  id: number
+  id: Id
   fileName: string
   sheetName: string
   importedAt: number
@@ -119,7 +120,11 @@ export interface Setting {
   value: unknown
 }
 
-const db = new Dexie('constructionExpenses') as Dexie & {
+export const DB_NAME = 'constructionLedger'
+/** The pre-UUID database. Read once during migration, then left alone. */
+export const LEGACY_DB_NAME = 'constructionExpenses'
+
+const db = new Dexie(DB_NAME) as Dexie & {
   projects: EntityTable<Project, 'id'>
   sources: EntityTable<Source, 'id'>
   payees: EntityTable<Payee, 'id'>
@@ -131,31 +136,40 @@ const db = new Dexie('constructionExpenses') as Dexie & {
 }
 
 db.version(1).stores({
-  projects: '++id, name, status',
-  sources: '++id, name, type, archived',
-  payees: '++id, name, role, archived',
-  categories: '++id, name, sortOrder',
+  projects: 'id, name, status',
+  sources: 'id, name, type, archived',
+  payees: 'id, name, role, archived',
+  categories: 'id, name, sortOrder, archived',
   txns:
-    '++id, date, projectId, sourceId, payeeId, categoryId, voided, importBatchId, ' +
+    'id, date, projectId, sourceId, payeeId, categoryId, voided, importBatchId, ' +
     '[projectId+date], [sourceId+voided], [payeeId+voided], [projectId+voided]',
-  fundIns: '++id, date, sourceId, projectId, [sourceId+date]',
-  importBatches: '++id, importedAt',
+  fundIns: 'id, date, sourceId, projectId, importBatchId, [sourceId+date]',
+  importBatches: 'id, importedAt',
   settings: 'key',
 })
 
-// v2: fund inflows can now come from a spreadsheet import, so they need to be
-// undoable as a batch like transactions are.
-db.version(2).stores({
-  fundIns: '++id, date, sourceId, projectId, importBatchId, [sourceId+date]',
-})
-
-// v3: cost heads can be archived, so an import's junk entries can leave the
-// picker without deleting the history that points at them.
-db.version(3)
-  .stores({
-    categories: '++id, name, sortOrder, archived',
+/**
+ * Ids are assigned here rather than at each `add()` call site.
+ *
+ * With `++id` gone, every insert must supply a primary key. Doing that in ~20
+ * call sites means one will eventually be missed, and the failure — a record
+ * written with `id: undefined` — is both silent and corrupting. A creating
+ * hook makes it impossible to forget.
+ */
+for (const table of [
+  db.projects,
+  db.sources,
+  db.payees,
+  db.categories,
+  db.txns,
+  db.fundIns,
+  db.importBatches,
+]) {
+  table.hook('creating', (_primKey, obj: { id?: Id }) => {
+    if (!obj.id) obj.id = newId()
+    return obj.id
   })
-  .upgrade((tx) => tx.table('categories').toCollection().modify({ archived: 0 }))
+}
 
 export { db }
 

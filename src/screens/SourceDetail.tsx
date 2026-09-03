@@ -1,3 +1,4 @@
+import type { Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -22,7 +23,7 @@ import { formatPaise, parseAmountToPaise } from '../lib/money'
  * steel supplier from this account this week".
  */
 export default function SourceDetail() {
-  const id = Number(useParams().id)
+  const id = useParams().id ?? ''
   const navigate = useNavigate()
   const [addingFunds, setAddingFunds] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -167,7 +168,7 @@ export default function SourceDetail() {
   )
 }
 
-function FundInForm({ sourceId, onDone }: { sourceId: number; onDone: () => void }) {
+function FundInForm({ sourceId, onDone }: { sourceId: Id; onDone: () => void }) {
   const [amount, setAmount] = useState('')
   const [origin, setOrigin] = useState('')
   const [date, setDate] = useState(todayStr())

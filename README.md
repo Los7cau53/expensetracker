@@ -152,6 +152,35 @@ accounts and API keys.
 - `navigator.storage.persist()` is requested on first run, which reduces the
   chance of eviction but is not a guarantee (Safari ignores it).
 
+## Record ids and the migration off auto-increment
+
+Ids are UUIDs (`src/db/ids.ts`), not Dexie's `++id`. That counter is private to
+one device's database: a phone and a laptop would each mint payee `5` for
+different people, and after any sync every `payeeId: 5` is ambiguous with no
+way to untangle it. Sync is impossible without globally unique ids, so this
+came first.
+
+IndexedDB cannot change a store's primary key in place, so the app opens a new
+database (`constructionLedger`) and copies the old one across on first run,
+remapping every foreign key (`src/db/migrateLegacy.ts`). Two deliberate
+choices:
+
+- **The legacy database is never deleted.** If the migration is wrong, the
+  original rows are still there. This is someone's financial history.
+- **The ledger total is compared before and after**, and a mismatch is logged
+  loudly. Migration also refuses to run into a database that already has
+  entries, and refuses to run twice.
+
+Ids being assigned centrally matters too: with `++id` gone every insert must
+supply a key, and doing that at ~20 call sites means one eventually gets
+missed — writing a record with `id: undefined`, silently. A Dexie `creating`
+hook assigns them instead.
+
+One consequence worth knowing: `toArray()` used to come back in insertion order
+because the keys were sequential. UUID keys have no meaningful order, so any
+list a reader sees — or that a default is taken from — now sorts explicitly
+(`byCreated`).
+
 ## Data model
 
 Dexie/IndexedDB. See `src/db/schema.ts`.

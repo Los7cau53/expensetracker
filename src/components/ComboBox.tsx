@@ -1,7 +1,8 @@
+import type { Id } from '../db/ids'
 import { useMemo, useRef, useState } from 'react'
 
 export interface ComboOption {
-  id: number
+  id: Id
   name: string
   sub?: string
 }
@@ -21,9 +22,9 @@ export function ComboBox({
   allowClear = false,
 }: {
   options: ComboOption[]
-  value?: number
-  onChange: (id: number | undefined) => void
-  onCreate?: (name: string) => Promise<number>
+  value?: Id
+  onChange: (id: Id | undefined) => void
+  onCreate?: (name: string) => Promise<Id>
   placeholder?: string
   allowClear?: boolean
 }) {
@@ -57,7 +58,7 @@ export function ComboBox({
     }
   }
 
-  function pick(id: number) {
+  function pick(id: Id) {
     onChange(id)
     setQuery('')
     setOpen(false)

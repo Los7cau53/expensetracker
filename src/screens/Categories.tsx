@@ -1,3 +1,4 @@
+import type { Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -24,7 +25,7 @@ import { sum } from '../db/queries'
  * of these and they are one line of text apiece.
  */
 export default function Categories() {
-  const [openId, setOpenId] = useState<number | null>(null)
+  const [openId, setOpenId] = useState<Id | null>(null)
   const [adding, setAdding] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -33,8 +34,8 @@ export default function Categories() {
   const categories = useLiveQuery(() => db.categories.orderBy('sortOrder').toArray(), [], [])
   const txns = useLiveQuery(() => db.txns.where('voided').equals(0).toArray(), [], [])
 
-  const spendFor = (id: number) => sum(txns.filter((t) => t.categoryId === id).map((t) => t.amount))
-  const countFor = (id: number) => txns.filter((t) => t.categoryId === id).length
+  const spendFor = (id: Id) => sum(txns.filter((t) => t.categoryId === id).map((t) => t.amount))
+  const countFor = (id: Id) => txns.filter((t) => t.categoryId === id).length
 
   const visible = categories.filter((c) => showArchived || !c.archived)
   const archivedCount = categories.filter((c) => c.archived).length

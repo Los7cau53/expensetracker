@@ -1,3 +1,4 @@
+import type { Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { ComboBox } from '../components/ComboBox'
@@ -19,7 +20,7 @@ import { usePref } from '../lib/prefs'
 export default function Ledger() {
   const [filter, setFilter] = usePref<TxnFilter>('ledgerFilter', {})
   const [showFilters, setShowFilters] = useState(false)
-  const [openId, setOpenId] = useState<number | null>(null)
+  const [openId, setOpenId] = useState<Id | null>(null)
 
   const projects = useLiveQuery(() => db.projects.toArray(), [], [])
   const sources = useLiveQuery(() => db.sources.toArray(), [], [])
@@ -33,10 +34,10 @@ export default function Ledger() {
   const txns = useLiveQuery(() => filterTxns(filter), [JSON.stringify(filter)], [])
 
   const name = {
-    project: (id?: number) => projects.find((p) => p.id === id)?.name ?? '—',
-    source: (id?: number) => sources.find((s) => s.id === id)?.name ?? '—',
-    payee: (id?: number) => (id ? payees.find((p) => p.id === id)?.name ?? '—' : 'Unassigned'),
-    category: (id?: number) => categories.find((c) => c.id === id)?.name ?? '—',
+    project: (id?: Id) => projects.find((p) => p.id === id)?.name ?? '—',
+    source: (id?: Id) => sources.find((s) => s.id === id)?.name ?? '—',
+    payee: (id?: Id) => (id ? payees.find((p) => p.id === id)?.name ?? '—' : 'Unassigned'),
+    category: (id?: Id) => categories.find((c) => c.id === id)?.name ?? '—',
   }
 
   const total = sum(txns.filter((t) => t.voided === 0).map((t) => t.amount))
@@ -72,7 +73,7 @@ export default function Ledger() {
                 <Select
                   value={filter.projectId ?? ''}
                   onChange={(e) =>
-                    setFilter({ ...filter, projectId: e.target.value ? Number(e.target.value) : undefined })
+                    setFilter({ ...filter, projectId: e.target.value || undefined })
                   }
                 >
                   <option value="">All</option>
@@ -85,7 +86,7 @@ export default function Ledger() {
                 <Select
                   value={filter.payeeId ?? ''}
                   onChange={(e) =>
-                    setFilter({ ...filter, payeeId: e.target.value ? Number(e.target.value) : undefined })
+                    setFilter({ ...filter, payeeId: e.target.value || undefined })
                   }
                 >
                   <option value="">All</option>
@@ -98,7 +99,7 @@ export default function Ledger() {
                 <Select
                   value={filter.sourceId ?? ''}
                   onChange={(e) =>
-                    setFilter({ ...filter, sourceId: e.target.value ? Number(e.target.value) : undefined })
+                    setFilter({ ...filter, sourceId: e.target.value || undefined })
                   }
                 >
                   <option value="">All</option>
@@ -111,7 +112,7 @@ export default function Ledger() {
                 <Select
                   value={filter.categoryId ?? ''}
                   onChange={(e) =>
-                    setFilter({ ...filter, categoryId: e.target.value ? Number(e.target.value) : undefined })
+                    setFilter({ ...filter, categoryId: e.target.value || undefined })
                   }
                 >
                   <option value="">All</option>
@@ -212,7 +213,7 @@ function TxnRow({
   txn: Txn
   open: boolean
   onToggle: () => void
-  name: Record<'project' | 'source' | 'payee' | 'category', (id?: number) => string>
+  name: Record<'project' | 'source' | 'payee' | 'category', (id?: Id) => string>
   projects: Project[]
   sources: Source[]
   payees: Payee[]
@@ -254,7 +255,7 @@ function TxnRow({
       role: guessPayeeRole(nm),
       archived: 0,
       createdAt: Date.now(),
-    } as never)) as number
+    } as never)) as string
   }
 
   /** Voiding preserves the row so a contractor dispute can still be traced. */
@@ -325,7 +326,7 @@ function TxnRow({
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Paid from">
-              <Select value={sourceId} onChange={(e) => setSourceId(Number(e.target.value))}>
+              <Select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
                 {sources.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} · {s.type}
@@ -334,7 +335,7 @@ function TxnRow({
               </Select>
             </Field>
             <Field label="Property">
-              <Select value={projectId} onChange={(e) => setProjectId(Number(e.target.value))}>
+              <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}

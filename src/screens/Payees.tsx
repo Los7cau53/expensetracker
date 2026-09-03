@@ -1,3 +1,4 @@
+import type { Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -9,7 +10,7 @@ import { usePref } from '../lib/prefs'
 
 /** Answers "whom has the money gone to" across every property. */
 export default function Payees() {
-  const [projectId, setProjectId] = usePref<number | undefined>('payeeScope', undefined)
+  const [projectId, setProjectId] = usePref<Id | undefined>('payeeScope', undefined)
   const [roleFilter, setRoleFilter] = useState<PayeeRole | ''>('')
   const [adding, setAdding] = useState(false)
 
@@ -43,7 +44,7 @@ export default function Payees() {
           <Field label="Property">
             <Select
               value={projectId ?? ''}
-              onChange={(e) => setProjectId(e.target.value ? Number(e.target.value) : undefined)}
+              onChange={(e) => setProjectId(e.target.value || undefined)}
             >
               <option value="">All properties</option>
               {projects.map((p) => (

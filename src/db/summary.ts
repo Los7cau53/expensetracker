@@ -1,16 +1,17 @@
+import type { Id } from './ids'
 import { db } from './schema'
 import type { Paise } from '../lib/money'
 import { monthOf, type DateStr } from '../lib/date'
 import { sum } from './queries'
 
 export interface SummaryFilter {
-  projectId?: number
+  projectId?: Id
   from?: DateStr
   to?: DateStr
 }
 
 export interface Slice {
-  id: number
+  id: Id
   name: string
   total: Paise
 }
@@ -82,15 +83,15 @@ export async function summarise(filter: SummaryFilter = {}): Promise<SummaryData
       return { date, cumulative: running, daily }
     })
 
-  const named = <T extends { id: number; name: string }>(rows: T[]) =>
+  const named = <T extends { id: Id; name: string }>(rows: T[]) =>
     new Map(rows.map((r) => [r.id, r.name]))
   const catName = named(categories)
   const srcName = named(sources)
   const projName = named(projects)
   const payeeById = new Map(payees.map((p) => [p.id, p]))
 
-  const group = (key: (t: typeof txns[number]) => number | undefined) => {
-    const m = new Map<number, Paise>()
+  const group = (key: (t: typeof txns[number]) => Id | undefined) => {
+    const m = new Map<Id, Paise>()
     for (const t of txns) {
       const k = key(t)
       if (k === undefined) continue
@@ -99,7 +100,7 @@ export async function summarise(filter: SummaryFilter = {}): Promise<SummaryData
     return m
   }
 
-  const toSlices = (m: Map<number, Paise>, names: Map<number, string>, fallback: string) =>
+  const toSlices = (m: Map<Id, Paise>, names: Map<Id, string>, fallback: string) =>
     [...m.entries()]
       .map(([id, total]) => ({ id, name: names.get(id) ?? fallback, total }))
       .sort((a, b) => b.total - a.total)

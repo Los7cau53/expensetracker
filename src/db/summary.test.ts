@@ -14,22 +14,22 @@ async function reset() {
 
 /** Two properties, two sources, a reversal, spread over three months. */
 async function fixture() {
-  const plotA = (await db.projects.add({ name: 'Plot 42', status: 'active', createdAt: 1 } as never)) as number
-  const plotB = (await db.projects.add({ name: 'Plot 7', status: 'active', createdAt: 1 } as never)) as number
+  const plotA = (await db.projects.add({ name: 'Plot 42', status: 'active', createdAt: 1 } as never)) as string
+  const plotB = (await db.projects.add({ name: 'Plot 7', status: 'active', createdAt: 1 } as never)) as string
 
   const bank = (await db.sources.add({
     name: 'SBI', type: 'bank', openingBalance: 10_000_00, archived: 0, createdAt: 1,
-  } as never)) as number
+  } as never)) as string
   const upi = (await db.sources.add({
     name: 'GPay', type: 'upi', openingBalance: 0, archived: 0, createdAt: 1,
-  } as never)) as number
+  } as never)) as string
 
   const mestri = (await db.payees.add({
     name: 'Ramesh mestri', role: 'mestri', archived: 0, createdAt: 1,
-  } as never)) as number
+  } as never)) as string
   const govt = (await db.payees.add({
     name: 'Panchayat', role: 'govt', archived: 0, createdAt: 1,
-  } as never)) as number
+  } as never)) as string
 
   const cats = await db.categories.orderBy('sortOrder').toArray()
 
@@ -37,7 +37,7 @@ async function fixture() {
     date: '2026-01-01', sourceId: bank, amount: 5_00_000_00, origin: 'Loan', createdAt: 1,
   } as never)
 
-  const add = (date: string, amount: number, projectId: number, sourceId: number, payeeId: number | undefined, categoryId: number) =>
+  const add = (date: string, amount: number, projectId: string, sourceId: string, payeeId: string | undefined, categoryId: string) =>
     db.txns.add({
       date, amount, projectId, sourceId, payeeId, categoryId,
       voided: 0, createdAt: 1, updatedAt: 1,

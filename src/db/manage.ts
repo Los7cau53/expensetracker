@@ -1,3 +1,4 @@
+import type { Id } from './ids'
 import {
   db,
   type Category,
@@ -17,7 +18,7 @@ export interface SourceUsage {
   inUse: boolean
 }
 
-export async function sourceUsage(sourceId: number): Promise<SourceUsage> {
+export async function sourceUsage(sourceId: Id): Promise<SourceUsage> {
   const [txnCount, fundInCount] = await Promise.all([
     db.txns.where('sourceId').equals(sourceId).count(),
     db.fundIns.where('sourceId').equals(sourceId).count(),
@@ -33,7 +34,7 @@ export interface SourceEdits {
   notes?: string
 }
 
-export async function updateSource(sourceId: number, edits: SourceEdits): Promise<void> {
+export async function updateSource(sourceId: Id, edits: SourceEdits): Promise<void> {
   const name = edits.name.trim()
   if (!name) throw new Error('A source needs a name.')
 
@@ -65,7 +66,7 @@ export async function updateSource(sourceId: number, edits: SourceEdits): Promis
  * historical row pointing at it, so past reports stay intact. This is the
  * right move for an account you have stopped using.
  */
-export async function setSourceArchived(sourceId: number, archived: boolean): Promise<void> {
+export async function setSourceArchived(sourceId: Id, archived: boolean): Promise<void> {
   await db.sources.update(sourceId, { archived: archived ? 1 : 0 })
 }
 
@@ -74,7 +75,7 @@ export async function setSourceArchived(sourceId: number, archived: boolean): Pr
  * a dangling sourceId would leave payments that belong to no account and
  * quietly break every balance.
  */
-export async function deleteSource(sourceId: number): Promise<void> {
+export async function deleteSource(sourceId: Id): Promise<void> {
   const usage = await sourceUsage(sourceId)
   if (usage.inUse) {
     throw new Error(
@@ -102,7 +103,7 @@ export interface MergeResult {
  * Opening balances are added together, so the merged source's balance equals
  * the sum of the two it replaces.
  */
-export async function mergeSources(fromId: number, intoId: number): Promise<MergeResult> {
+export async function mergeSources(fromId: Id, intoId: Id): Promise<MergeResult> {
   if (fromId === intoId) throw new Error('Pick a different source to merge into.')
 
   return db.transaction('rw', [db.sources, db.txns, db.fundIns], async () => {
@@ -126,7 +127,7 @@ export async function mergeSources(fromId: number, intoId: number): Promise<Merg
 }
 
 /** Sources a given one may be merged into. */
-export async function mergeTargets(sourceId: number): Promise<Source[]> {
+export async function mergeTargets(sourceId: Id): Promise<Source[]> {
   return (await db.sources.toArray())
     .filter((s) => s.id !== sourceId)
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -160,7 +161,7 @@ const usage = (txnCount: number, fundInCount = 0): Usage => ({
 
 async function assertNameFree(
   table: 'payees' | 'categories' | 'projects',
-  id: number,
+  id: Id,
   name: string,
 ): Promise<void> {
   const norm = (v: string) => v.trim().toLowerCase()
@@ -177,12 +178,12 @@ async function assertNameFree(
 
 // --- payees ---------------------------------------------------------------
 
-export async function payeeUsage(payeeId: number): Promise<Usage> {
+export async function payeeUsage(payeeId: Id): Promise<Usage> {
   return usage(await db.txns.where('payeeId').equals(payeeId).count())
 }
 
 export async function updatePayee(
-  payeeId: number,
+  payeeId: Id,
   edits: { name: string; role: PayeeRole; phone?: string; notes?: string },
 ): Promise<void> {
   const name = edits.name.trim()
@@ -196,11 +197,11 @@ export async function updatePayee(
   })
 }
 
-export async function setPayeeArchived(payeeId: number, archived: boolean): Promise<void> {
+export async function setPayeeArchived(payeeId: Id, archived: boolean): Promise<void> {
   await db.payees.update(payeeId, { archived: archived ? 1 : 0 })
 }
 
-export async function deletePayee(payeeId: number): Promise<void> {
+export async function deletePayee(payeeId: Id): Promise<void> {
   const u = await payeeUsage(payeeId)
   if (u.inUse) {
     throw new Error(
@@ -211,7 +212,7 @@ export async function deletePayee(payeeId: number): Promise<void> {
   await db.payees.delete(payeeId)
 }
 
-export async function mergePayees(fromId: number, intoId: number): Promise<{ movedTxns: number }> {
+export async function mergePayees(fromId: Id, intoId: Id): Promise<{ movedTxns: number }> {
   if (fromId === intoId) throw new Error('Pick a different payee to merge into.')
   return db.transaction('rw', [db.payees, db.txns], async () => {
     const from = await db.payees.get(fromId)
@@ -223,7 +224,7 @@ export async function mergePayees(fromId: number, intoId: number): Promise<{ mov
   })
 }
 
-export async function payeeMergeTargets(payeeId: number): Promise<Payee[]> {
+export async function payeeMergeTargets(payeeId: Id): Promise<Payee[]> {
   return (await db.payees.toArray())
     .filter((p) => p.id !== payeeId)
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -231,22 +232,22 @@ export async function payeeMergeTargets(payeeId: number): Promise<Payee[]> {
 
 // --- cost heads -----------------------------------------------------------
 
-export async function categoryUsage(categoryId: number): Promise<Usage> {
+export async function categoryUsage(categoryId: Id): Promise<Usage> {
   return usage(await db.txns.where('categoryId').equals(categoryId).count())
 }
 
-export async function updateCategory(categoryId: number, name: string): Promise<void> {
+export async function updateCategory(categoryId: Id, name: string): Promise<void> {
   const trimmed = name.trim()
   if (!trimmed) throw new Error('A cost head needs a name.')
   await assertNameFree('categories', categoryId, trimmed)
   await db.categories.update(categoryId, { name: trimmed })
 }
 
-export async function setCategoryArchived(categoryId: number, archived: boolean): Promise<void> {
+export async function setCategoryArchived(categoryId: Id, archived: boolean): Promise<void> {
   await db.categories.update(categoryId, { archived: archived ? 1 : 0 })
 }
 
-export async function deleteCategory(categoryId: number): Promise<void> {
+export async function deleteCategory(categoryId: Id): Promise<void> {
   const u = await categoryUsage(categoryId)
   if (u.inUse) {
     throw new Error(
@@ -260,8 +261,8 @@ export async function deleteCategory(categoryId: number): Promise<void> {
 }
 
 export async function mergeCategories(
-  fromId: number,
-  intoId: number,
+  fromId: Id,
+  intoId: Id,
 ): Promise<{ movedTxns: number }> {
   if (fromId === intoId) throw new Error('Pick a different cost head to merge into.')
   return db.transaction('rw', [db.categories, db.txns], async () => {
@@ -274,14 +275,14 @@ export async function mergeCategories(
   })
 }
 
-export async function categoryMergeTargets(categoryId: number): Promise<Category[]> {
+export async function categoryMergeTargets(categoryId: Id): Promise<Category[]> {
   return (await db.categories.toArray())
     .filter((c) => c.id !== categoryId)
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** Adds a cost head, placed after the existing ones. */
-export async function addCategory(name: string): Promise<number> {
+export async function addCategory(name: string): Promise<Id> {
   const trimmed = name.trim()
   if (!trimmed) throw new Error('A cost head needs a name.')
   const norm = (v: string) => v.trim().toLowerCase()
@@ -289,12 +290,12 @@ export async function addCategory(name: string): Promise<number> {
     throw new Error(`"${trimmed}" already exists.`)
   }
   const sortOrder = (await db.categories.count()) + 1000
-  return (await db.categories.add({ name: trimmed, sortOrder, archived: 0 } as never)) as number
+  return (await db.categories.add({ name: trimmed, sortOrder, archived: 0 } as never)) as string
 }
 
 // --- properties -----------------------------------------------------------
 
-export async function projectUsage(projectId: number): Promise<Usage> {
+export async function projectUsage(projectId: Id): Promise<Usage> {
   const [txnCount, fundInCount] = await Promise.all([
     db.txns.where('projectId').equals(projectId).count(),
     db.fundIns.where('projectId').equals(projectId).count(),
@@ -303,7 +304,7 @@ export async function projectUsage(projectId: number): Promise<Usage> {
 }
 
 export async function updateProject(
-  projectId: number,
+  projectId: Id,
   edits: { name: string; address?: string; status: ProjectStatus; budget?: Paise },
 ): Promise<void> {
   const name = edits.name.trim()
@@ -317,7 +318,7 @@ export async function updateProject(
   })
 }
 
-export async function deleteProject(projectId: number): Promise<void> {
+export async function deleteProject(projectId: Id): Promise<void> {
   const u = await projectUsage(projectId)
   if (u.inUse) {
     throw new Error(
@@ -332,8 +333,8 @@ export async function deleteProject(projectId: number): Promise<void> {
 }
 
 export async function mergeProjects(
-  fromId: number,
-  intoId: number,
+  fromId: Id,
+  intoId: Id,
 ): Promise<{ movedTxns: number; movedFundIns: number; budgetAdded: Paise }> {
   if (fromId === intoId) throw new Error('Pick a different property to merge into.')
   return db.transaction('rw', [db.projects, db.txns, db.fundIns], async () => {
@@ -357,7 +358,7 @@ export async function mergeProjects(
   })
 }
 
-export async function projectMergeTargets(projectId: number): Promise<Project[]> {
+export async function projectMergeTargets(projectId: Id): Promise<Project[]> {
   return (await db.projects.toArray())
     .filter((p) => p.id !== projectId)
     .sort((a, b) => a.name.localeCompare(b.name))

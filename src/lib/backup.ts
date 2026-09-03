@@ -1,3 +1,4 @@
+import type { Id } from '../db/ids'
 import { db, type FundIn, type Txn } from '../db/schema'
 import { formatDate, todayStr } from './date'
 
@@ -352,7 +353,7 @@ export async function downloadCsv(): Promise<string> {
     db.categories.toArray(),
   ])
 
-  const name = <T extends { id: number; name: string }>(xs: T[], id?: number) =>
+  const name = <T extends { id: Id; name: string }>(xs: T[], id?: Id) =>
     id === undefined ? '' : xs.find((x) => x.id === id)?.name ?? ''
 
   const header = [

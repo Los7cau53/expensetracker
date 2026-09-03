@@ -42,12 +42,12 @@ async function duplicateSources() {
 
   const a = (await db.sources.add({
     name: 'sbi 4471', type: 'bank', openingBalance: 5_000_00, archived: 0, createdAt: 1,
-  } as never)) as number
+  } as never)) as string
   const b = (await db.sources.add({
     name: 'SBI 4471', type: 'bank', openingBalance: 2_000_00, archived: 0, createdAt: 1,
-  } as never)) as number
+  } as never)) as string
 
-  const txn = (sourceId: number, amount: number, date: string) =>
+  const txn = (sourceId: string, amount: number, date: string) =>
     db.txns.add({
       date, amount, projectId, sourceId, categoryId,
       voided: 0, createdAt: 1, updatedAt: 1,
@@ -181,7 +181,7 @@ describe('deleting', () => {
     await duplicateSources()
     const spare = (await db.sources.add({
       name: 'Unused wallet', type: 'cash', openingBalance: 0, archived: 0, createdAt: 1,
-    } as never)) as number
+    } as never)) as string
 
     expect((await sourceUsage(spare)).inUse).toBe(false)
     await deleteSource(spare)
@@ -250,7 +250,7 @@ describe('merging two spellings of one account', () => {
 
   it('rejects a target that no longer exists', async () => {
     const { a } = await duplicateSources()
-    await expect(mergeSources(a, 99999)).rejects.toThrow(/no longer exists/)
+    await expect(mergeSources(a, 'no-such-id')).rejects.toThrow(/no longer exists/)
     // The failed merge must not have moved anything.
     expect(await db.txns.where('sourceId').equals(a).count()).toBe(2)
   })
@@ -275,12 +275,12 @@ async function duplicatePayees() {
 
   const a = (await db.payees.add({
     name: 'Ramesh mestri', role: 'mestri', archived: 0, createdAt: 1,
-  } as never)) as number
+  } as never)) as string
   const b = (await db.payees.add({
     name: 'ramesh Mestri', role: 'other', archived: 0, createdAt: 1,
-  } as never)) as number
+  } as never)) as string
 
-  const txn = (payeeId: number, amount: number) =>
+  const txn = (payeeId: string, amount: number) =>
     db.txns.add({
       date: '2026-02-01', amount, projectId, sourceId, payeeId, categoryId,
       voided: 0, createdAt: 1, updatedAt: 1,
@@ -416,7 +416,7 @@ describe('properties', () => {
     const a = (await db.projects.toArray())[0].id
     const b = (await db.projects.add({
       name: 'Plot 7', status: 'active', budget: 10_00_000_00, createdAt: 1,
-    } as never)) as number
+    } as never)) as string
     const sourceId = (await db.sources.toArray())[0].id
     const categoryId = (await db.categories.toArray())[0].id
     await db.txns.add({

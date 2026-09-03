@@ -28,7 +28,7 @@ import { formatDate } from '../lib/date'
 
 /** One payee's full ledger, split by property. */
 export default function PayeeDetail() {
-  const id = Number(useParams().id)
+  const id = useParams().id ?? ''
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
   const [status, setStatus] = useState<string | null>(null)

@@ -1,3 +1,4 @@
+import type { Id } from './ids'
 import { db, type Payee, type Project, type Source, type Txn } from './schema'
 import type { Paise } from '../lib/money'
 import { monthOf, type DateStr } from '../lib/date'
@@ -18,7 +19,7 @@ export interface SourceBalance {
  * This identity is the app's central promise, so it is computed in one place
  * and asserted in tests rather than recalculated per screen.
  */
-export async function sourceBalances(projectId?: number): Promise<SourceBalance[]> {
+export async function sourceBalances(projectId?: Id): Promise<SourceBalance[]> {
   const [sources, fundIns, txns] = await Promise.all([
     db.sources.toArray(),
     db.fundIns.toArray(),
@@ -53,11 +54,11 @@ export interface PayeeTotal {
   total: Paise
   txnCount: number
   lastPaid?: DateStr
-  byProject: { projectId: number; total: Paise }[]
+  byProject: { projectId: Id; total: Paise }[]
 }
 
 /** Answers "how much has this person been paid, and on which property". */
-export async function payeeTotals(projectId?: number): Promise<PayeeTotal[]> {
+export async function payeeTotals(projectId?: Id): Promise<PayeeTotal[]> {
   const [payees, txns] = await Promise.all([db.payees.toArray(), live().toArray()])
   const scoped = projectId ? txns.filter((t) => t.projectId === projectId) : txns
 
@@ -83,15 +84,15 @@ export interface ProjectSummary {
   project: Project
   spent: Paise
   txnCount: number
-  byCategory: { id: number; name: string; total: Paise }[]
-  bySource: { id: number; name: string; total: Paise }[]
+  byCategory: { id: Id; name: string; total: Paise }[]
+  bySource: { id: Id; name: string; total: Paise }[]
   byPayeeRole: { role: string; total: Paise }[]
   byMonth: { month: string; total: Paise }[]
   firstDate?: DateStr
   lastDate?: DateStr
 }
 
-export async function projectSummary(projectId: number): Promise<ProjectSummary | null> {
+export async function projectSummary(projectId: Id): Promise<ProjectSummary | null> {
   const project = await db.projects.get(projectId)
   if (!project) return null
 
@@ -129,10 +130,10 @@ export async function projectSummary(projectId: number): Promise<ProjectSummary 
 }
 
 export interface TxnFilter {
-  projectId?: number
-  sourceId?: number
-  payeeId?: number
-  categoryId?: number
+  projectId?: Id
+  sourceId?: Id
+  payeeId?: Id
+  categoryId?: Id
   from?: DateStr
   to?: DateStr
   search?: string
@@ -168,12 +169,12 @@ export function sum(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0)
 }
 
-function nameMap<T extends { id: number; name: string }>(xs: T[]) {
+function nameMap<T extends { id: Id; name: string }>(xs: T[]) {
   return new Map(xs.map((x) => [x.id, x.name]))
 }
 
-function groupSum(txns: Txn[], key: (t: Txn) => number | undefined): [number, Paise][] {
-  const m = new Map<number, Paise>()
+function groupSum(txns: Txn[], key: (t: Txn) => Id | undefined): [Id, Paise][] {
+  const m = new Map<Id, Paise>()
   for (const t of txns) {
     const k = key(t)
     if (k === undefined) continue

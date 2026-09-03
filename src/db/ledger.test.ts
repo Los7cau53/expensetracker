@@ -24,7 +24,7 @@ async function fixture() {
     name: 'Plot 42',
     status: 'active',
     createdAt: Date.now(),
-  } as never)) as number
+  } as never)) as string
 
   const bankId = (await db.sources.add({
     name: 'SBI savings',
@@ -32,7 +32,7 @@ async function fixture() {
     openingBalance: 5_000_00, // ₹5,000
     archived: 0,
     createdAt: Date.now(),
-  } as never)) as number
+  } as never)) as string
 
   const upiId = (await db.sources.add({
     name: 'GPay',
@@ -40,29 +40,29 @@ async function fixture() {
     openingBalance: 0,
     archived: 0,
     createdAt: Date.now(),
-  } as never)) as number
+  } as never)) as string
 
   const mestriId = (await db.payees.add({
     name: 'Ramesh mestri',
     role: 'mestri',
     archived: 0,
     createdAt: Date.now(),
-  } as never)) as number
+  } as never)) as string
 
   const electricianId = (await db.payees.add({
     name: 'Suresh electrical',
     role: 'electrician',
     archived: 0,
     createdAt: Date.now(),
-  } as never)) as number
+  } as never)) as string
 
   const categoryId = (await db.categories.orderBy('sortOrder').first())!.id
 
   const now = Date.now()
   const txn = (
     amount: number,
-    sourceId: number,
-    payeeId: number | undefined,
+    sourceId: string,
+    payeeId: string | undefined,
     date: string,
   ) =>
     db.txns.add({
@@ -75,7 +75,7 @@ async function fixture() {
       voided: 0,
       createdAt: now,
       updatedAt: now,
-    } as never) as Promise<number>
+    } as never) as Promise<string>
 
   // ₹2,00,000 loan money into the bank account.
   await db.fundIns.add({

@@ -1,9 +1,10 @@
+import type { Id } from '../db/ids'
 import { useState, type ReactNode } from 'react'
 import { Button, Card, Field, Select } from './ui'
 import type { Usage } from '../db/manage'
 
 export interface MergeTarget {
-  id: number
+  id: Id
   name: string
   sub?: string
 }
@@ -40,14 +41,14 @@ export function ManagePanel({
   archived?: boolean
   onArchive?: (next: boolean) => Promise<void>
   mergePreview: (target: MergeTarget) => ReactNode
-  onMerge: (targetId: number) => Promise<string>
+  onMerge: (targetId: Id) => Promise<string>
   onDelete: () => Promise<void>
   onDone: (msg: string) => void
   onError: (msg: string) => void
   /** Called once the entity is gone, so the caller can navigate away. */
   onGone: () => void
 }) {
-  const [mergeInto, setMergeInto] = useState<number | ''>('')
+  const [mergeInto, setMergeInto] = useState<Id | ''>('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -99,7 +100,7 @@ export function ManagePanel({
           >
             <Select
               value={mergeInto}
-              onChange={(e) => setMergeInto(e.target.value ? Number(e.target.value) : '')}
+              onChange={(e) => setMergeInto(e.target.value ? e.target.value : '')}
             >
               <option value="">Choose a {noun}…</option>
               {targets.map((t) => (

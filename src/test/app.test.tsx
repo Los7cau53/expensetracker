@@ -168,7 +168,7 @@ describe('ledger', () => {
       role: 'electrician',
       archived: 0,
       createdAt: Date.now(),
-    } as never)) as number
+    } as never)) as string
 
     await db.txns.add({
       date: '2026-02-14',
@@ -206,13 +206,18 @@ describe('ledger', () => {
       voided: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-    } as never)) as number
+    } as never)) as string
 
     renderApp('/ledger')
     await screen.findByRole('heading', { name: 'Ledger' })
 
-    // With no payee, the row is labelled by its cost head.
-    await user.click(await screen.findByText('Land & registration'))
+    // With no payee, the row is labelled by its cost head. Named explicitly:
+    // UUID keys mean toArray() has no meaningful order, so "the first
+    // category" is no longer a thing a test can rely on.
+    const costHead = (await db.categories.get(
+      (await db.txns.toArray())[0].categoryId,
+    ))!.name
+    await user.click(await screen.findByText(costHead))
     await user.click(await screen.findByRole('button', { name: 'Void' }))
 
     await waitFor(async () => {
@@ -262,7 +267,7 @@ describe('fixing up imported rows by hand', () => {
       openingBalance: 0,
       archived: 0,
       createdAt: Date.now(),
-    } as never)) as number
+    } as never)) as string
 
     const id = (await db.txns.add({
       date: '2026-02-20',
@@ -275,7 +280,7 @@ describe('fixing up imported rows by hand', () => {
       voided: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-    } as never)) as number
+    } as never)) as string
 
     return { id, realSource, fallbackSource: sources[0].id }
   }
