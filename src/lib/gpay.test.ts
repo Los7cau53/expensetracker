@@ -191,3 +191,13 @@ describe('receiptNote', () => {
     )
   })
 })
+
+describe('timestamps are local, not UTC', () => {
+  it('renders the epoch in the device timezone', () => {
+    // 1787832753 is 12:12 UTC and 17:42 IST. The receipt shows 5:42 pm, so the
+    // device's own zone is the right reading — a phone in India must not be
+    // shown a UTC time. Tests pin TZ so this assertion is stable anywhere.
+    expect(new Date(1787832753 * 1000).getHours()).toBe(17)
+    expect(parseGpayFilename('1787832753 - 1.00 To X on Google Pay.png').time).toBe('17:42')
+  })
+})

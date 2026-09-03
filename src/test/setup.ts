@@ -1,3 +1,9 @@
+// Pinned before anything reads a Date. Receipt timestamps are epoch seconds
+// rendered in the device's local zone — correct for a phone in India, but it
+// makes any assertion on a wall-clock time depend on where the test runs. CI
+// runs in UTC, which turned 17:42 IST into 12:12 and failed the build.
+process.env.TZ = 'Asia/Kolkata'
+
 // Dexie needs an IndexedDB implementation; Node has none.
 import 'fake-indexeddb/auto'
 
