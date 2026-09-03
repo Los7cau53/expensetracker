@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { lazy, Suspense, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { RepairPanel } from '../components/RepairPanel'
 import { SyncPanel } from '../components/SyncPanel'
 import { Button, Card, Money, Screen, Stat } from '../components/ui'
 import { sum } from '../db/queries'
@@ -38,6 +39,8 @@ export default function Settings() {
   const [importing, setImporting] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Lifted so the repair panel knows whether a remote copy exists to wipe.
+  const [syncUid, setSyncUid] = useState<string | null>(null)
   const [confirmRestore, setConfirmRestore] = useState<{
     file: File
     snap: Snapshot
@@ -143,7 +146,7 @@ export default function Settings() {
           </ul>
         </Card>
 
-        <SyncPanel />
+        <SyncPanel onUid={setSyncUid} />
 
         <div className="grid grid-cols-2 gap-3">
           <Stat label="Entries" value={txns.length} />
@@ -371,6 +374,8 @@ export default function Settings() {
 
         {status && <p className="rounded-lg bg-in/10 px-3 py-2 text-sm font-medium text-in">{status}</p>}
         {error && <p className="rounded-lg bg-out/10 px-3 py-2 text-sm font-medium text-out">{error}</p>}
+
+        <RepairPanel uid={syncUid} />
 
         <Link to="/" className="block px-1 text-sm text-accent">← Summary</Link>
       </div>

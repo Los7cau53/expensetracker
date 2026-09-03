@@ -56,6 +56,29 @@ export class FirestoreRemote implements RemoteStore {
   }
 }
 
+/**
+ * Deletes every record this user has in Firestore.
+ *
+ * Needed by the hard reset: clearing only the local copy would leave the next
+ * sync to pull everything straight back, and the reset would look like it
+ * silently failed.
+ */
+export async function wipeRemote(uid: string): Promise<number> {
+  const fs = await getFirestoreDb()
+  const { collection, getDocs, writeBatch } = await import('firebase/firestore')
+  const snap = await getDocs(collection(fs, 'users', uid, 'records'))
+
+  let deleted = 0
+  const docs = snap.docs
+  for (let i = 0; i < docs.length; i += 400) {
+    const batch = writeBatch(fs)
+    for (const d of docs.slice(i, i + 400)) batch.delete(d.ref)
+    await batch.commit()
+    deleted += docs.slice(i, i + 400).length
+  }
+  return deleted
+}
+
 /** Builds a remote bound to one user, loading the SDK on the way. */
 export async function createFirestoreRemote(uid: string): Promise<FirestoreRemote> {
   return new FirestoreRemote(uid, await getFirestoreDb())

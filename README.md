@@ -225,6 +225,39 @@ npx firebase-tools deploy --only firestore:rules --project construction-tracker-
 `los7cau53.github.io` must also be listed under **Authentication → Settings →
 Authorized domains**.
 
+## Repair and reset
+
+`Settings → Repair`.
+
+**Merge duplicates** folds records that name the same thing twice back into
+one, moving every entry across before deleting anything. Duplicates arise from
+sync when two devices independently created what is really one record. The
+survivor is chosen deterministically — a derived `seed-` id first, then the
+oldest, then the lowest id — so every device, repairing independently, folds
+the same direction.
+
+**Delete everything** erases the ledger and starts over from the defaults,
+behind a typed `delete` confirmation. When signed in it offers to delete the
+copy in the Google account too, and that option is on by default: clearing only
+the local copy means the next sync pulls it all straight back and the reset
+looks like it silently failed. The remote is wiped **first**, so a network
+failure leaves the local data intact and the reset simply retryable. No
+tombstones are left behind — there is no one to tell, and they would push
+deletions at a device that might hold the only remaining copy.
+
+### The bug that made this necessary
+
+Cost heads doubled to 46. Seeding gave a default the derived id
+`seed-cat-masonry`; the legacy migration gave the same default a random UUID.
+A device that migrated its old database and a device that seeded fresh
+therefore held *different records* for the same "Masonry", and sync correctly
+kept both.
+
+An earlier fix had made seeding deterministic but left the migration alone, so
+it only covered seed-versus-seed and not migrate-versus-seed. Both now use one
+`seedId()` helper in `src/db/ids.ts`, which is why it lives there rather than
+in either caller.
+
 ## Record ids and the migration off auto-increment
 
 Ids are UUIDs (`src/db/ids.ts`), not Dexie's `++id`. That counter is private to

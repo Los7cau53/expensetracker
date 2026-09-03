@@ -28,3 +28,15 @@ export function byCreated<T extends { createdAt?: number; name?: string }>(rows:
     (a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || (a.name ?? '').localeCompare(b.name ?? ''),
   )
 }
+
+/**
+ * The id a seeded default gets, derived from its name.
+ *
+ * Shared by seeding and by the legacy migration, and that sharing is the whole
+ * point. When they disagreed, a device that migrated its old database produced
+ * random ids for the same 24 default cost heads that a freshly seeded device
+ * produced derived ids for — and sync, correctly, kept both sets. 24 became 48.
+ */
+export function seedId(kind: 'cat' | 'src' | 'proj', name: string): string {
+  return `seed-${kind}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
+}

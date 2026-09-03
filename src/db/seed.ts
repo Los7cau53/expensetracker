@@ -1,16 +1,5 @@
+import { seedId } from './ids'
 import { db, DEFAULT_CATEGORIES } from './schema'
-
-/**
- * Seeded rows get ids derived from their names rather than random ones.
- *
- * Every device seeds itself on first run. With random ids, a phone and a
- * laptop would each create their own "Masonry" and sync would faithfully keep
- * both — 24 default cost heads becoming 48. A derived id means both devices
- * produce the same record, and sync collapses them into one.
- */
-function seedId(kind: string, name: string): string {
-  return `seed-${kind}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
-}
 
 /**
  * Populates the minimum a first-run user needs to record a payment

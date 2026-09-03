@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Button, Card } from './ui'
 import { OWNER_EMAILS } from '../sync/owners'
 import { useSync } from '../sync/useSync'
@@ -8,8 +9,14 @@ import { useSync } from '../sync/useSync'
  * States the two things a reader needs to trust it: when it last synced, and
  * that the local copy still works on its own.
  */
-export function SyncPanel() {
+export function SyncPanel({ onUid }: { onUid?: (uid: string | null) => void }) {
   const { user, status, lastResult, lastSyncedAt, error, signIn, signOut, syncNow } = useSync()
+
+  // Reported upward so the repair panel can offer to wipe the remote copy.
+  const uid = status === 'notAllowed' ? null : (user?.uid ?? null)
+  useEffect(() => {
+    onUid?.(uid)
+  }, [uid, onUid])
 
   return (
     <Card className="space-y-3 p-4">

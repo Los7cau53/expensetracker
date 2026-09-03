@@ -1,6 +1,6 @@
 import Dexie from 'dexie'
-import { db, LEGACY_DB_NAME } from './schema'
-import { newId, type Id } from './ids'
+import { db, DEFAULT_CATEGORIES, LEGACY_DB_NAME } from './schema'
+import { newId, seedId, type Id } from './ids'
 
 /**
  * Moves data out of the pre-UUID database.
@@ -66,9 +66,24 @@ export async function migrateLegacyIfNeeded(): Promise<MigrationReport> {
       .reduce((a, t) => a + Number(t.amount ?? 0), 0)
 
     // One new id per old id, per table.
+    //
+    // Rows that are one of the seeded defaults must get the *derived* id, not
+    // a random one. Otherwise this device's "Masonry" and a freshly seeded
+    // device's "Masonry" are different records, and sync keeps both.
+    const defaultCategories = new Set(DEFAULT_CATEGORIES.map((n) => n.toLowerCase()))
+    const idFor = (t: (typeof TABLES)[number], row: Record<string, unknown>): Id => {
+      const name = typeof row.name === 'string' ? row.name : ''
+      if (t === 'categories' && defaultCategories.has(name.toLowerCase())) {
+        return seedId('cat', name)
+      }
+      if (t === 'sources' && name === 'Cash in hand') return seedId('src', name)
+      if (t === 'projects' && name === 'My first property') return seedId('proj', name)
+      return newId()
+    }
+
     const map: Record<string, Map<unknown, Id>> = {}
     for (const t of TABLES) {
-      map[t] = new Map(rows[t].map((r) => [r.id, newId()]))
+      map[t] = new Map(rows[t].map((r) => [r.id, idFor(t, r)]))
     }
 
     const remap = (table: (typeof TABLES)[number], oldId: unknown): Id | undefined =>
