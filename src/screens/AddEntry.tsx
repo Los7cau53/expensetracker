@@ -5,9 +5,16 @@ import { useNavigate } from 'react-router-dom'
 import { ComboBox } from '../components/ComboBox'
 import { DateField } from '../components/DateField'
 import { ScreenshotReader } from '../components/ScreenshotReader'
-import { Button, Field, Screen, Select, TextInput } from '../components/ui'
+import { Button, Field, FieldGroup, Screen, Select, TextInput } from '../components/ui'
 import { db, PAYEE_ROLES, type PayeeRole } from '../db/schema'
 import { todayStr } from '../lib/date'
+import {
+  createCategoryByName,
+  createPayeeByName,
+  createProjectByName,
+  createSourceByName,
+  guessedSourceTypeFor,
+} from '../db/create'
 import { receiptNote, type ReceiptFields } from '../lib/gpay'
 import { guessPayeeRole } from '../lib/infer'
 import { formatPaise, parseAmountToPaise } from '../lib/money'
@@ -52,6 +59,8 @@ export default function AddEntry() {
   const [error, setError] = useState<string | null>(null)
   const [reading, setReading] = useState(false)
   const [matchNote, setMatchNote] = useState<string | null>(null)
+  // What was just created inline, so a guessed source type is not a surprise.
+  const [created, setCreated] = useState<string | null>(null)
 
   const effectiveProject = projectId ?? projects[0]?.id
   const effectiveSource = sourceId ?? sources[0]?.id
@@ -85,6 +94,7 @@ export default function AddEntry() {
     setAmount('')
     setNote('')
     setRefNo('')
+    setCreated(null)
 
     if (andAnother) {
       // Keep payee and date — consecutive site entries usually share both.
@@ -148,14 +158,9 @@ export default function AddEntry() {
   }
 
   async function createPayee(name: string) {
-    return (await db.payees.add({
-      name,
-      // Inferred from the name, the same way the importer does it, so typing
-      // "Ramesh mestri" does not then ask what a mestri is.
-      role: guessPayeeRole(name),
-      archived: 0,
-      createdAt: Date.now(),
-    } as never)) as string
+    const id = await createPayeeByName(name)
+    setCreated(`added "${name}" as a new payee`)
+    return id
   }
 
   async function setPayeeRole(role: PayeeRole) {
@@ -176,6 +181,9 @@ export default function AddEntry() {
         {matchNote && (
           <p className="rounded-lg bg-accent/5 px-3 py-2 text-xs text-muted">{matchNote}</p>
         )}
+        {created && (
+          <p className="rounded-lg bg-in/10 px-3 py-2 text-xs text-muted">{created}</p>
+        )}
 
         <Field label="Amount paid">
           <input
@@ -193,24 +201,25 @@ export default function AddEntry() {
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Date">
+          <FieldGroup label="Date">
             <DateField value={date} onChange={setDate} />
-          </Field>
-          <Field label="Property">
-            <Select
-              value={effectiveProject ?? ''}
-              onChange={(e) => setProjectId(e.target.value)}
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          </FieldGroup>
+          <FieldGroup label="Property">
+            <ComboBox
+              options={projects.map((p) => ({ id: p.id, name: p.name }))}
+              value={effectiveProject}
+              onChange={setProjectId}
+              onCreate={async (name) => {
+                const id = await createProjectByName(name)
+                setCreated(`added "${name}" as a new property`)
+                return id
+              }}
+              placeholder="Which property…"
+            />
+          </FieldGroup>
         </div>
 
-        <Field label="Paid to" hint="Leave empty for counter payments with no named recipient.">
+        <FieldGroup label="Paid to" hint="Leave empty for counter payments with no named recipient.">
           <ComboBox
             options={payees.map((p) => ({ id: p.id, name: p.name, sub: p.role }))}
             value={payeeId}
@@ -219,7 +228,7 @@ export default function AddEntry() {
             allowClear
             placeholder="Mestri, electrician, supplier…"
           />
-        </Field>
+        </FieldGroup>
 
         {selectedPayee?.role === 'other' && (
           <Field label={`What does ${selectedPayee.name} do?`} hint="Sets their role for role-wise reports.">
@@ -233,27 +242,35 @@ export default function AddEntry() {
           </Field>
         )}
 
-        <Field label="For what">
+        <FieldGroup label="For what">
           <ComboBox
             options={categories.map((c) => ({ id: c.id, name: c.name }))}
             value={categoryId}
             onChange={setCategoryId}
+            onCreate={async (name) => {
+              const id = await createCategoryByName(name)
+              setCreated(`added "${name}" as a new cost head`)
+              return id
+            }}
             placeholder="Permissions, masonry, cement…"
           />
-        </Field>
+        </FieldGroup>
 
-        <Field label="Paid from">
-          <Select
-            value={effectiveSource ?? ''}
-            onChange={(e) => setSourceId(e.target.value)}
-          >
-            {sources.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} · {s.type}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <FieldGroup label="Paid from">
+          <ComboBox
+            options={sources.map((s) => ({ id: s.id, name: s.name, sub: s.type }))}
+            value={effectiveSource}
+            onChange={setSourceId}
+            onCreate={async (name) => {
+              const id = await createSourceByName(name)
+              setCreated(
+                `added "${name}" as a new ${guessedSourceTypeFor(name)} source — change its type in Settings if that is wrong`,
+              )
+              return id
+            }}
+            placeholder="Cash, SBI, GPay…"
+          />
+        </FieldGroup>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Note">

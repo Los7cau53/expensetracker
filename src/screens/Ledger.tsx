@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { DateField } from '../components/DateField'
 import { ComboBox } from '../components/ComboBox'
-import { Button, Card, Empty, Field, Money, Screen, Select, TextInput } from '../components/ui'
+import { Button, Card, Empty, Field, FieldGroup, Money, Screen, Select, TextInput } from '../components/ui'
 import { filterTxns, sum, type TxnFilter } from '../db/queries'
 import {
   db,
@@ -14,7 +14,12 @@ import {
   type Txn,
 } from '../db/schema'
 import { formatDate, formatMonth, monthOf } from '../lib/date'
-import { guessPayeeRole } from '../lib/infer'
+import {
+  createCategoryByName,
+  createPayeeByName,
+  createProjectByName,
+  createSourceByName,
+} from '../db/create'
 import { parseAmountToPaise } from '../lib/money'
 import { usePref } from '../lib/prefs'
 
@@ -122,20 +127,20 @@ export default function Ledger() {
                   ))}
                 </Select>
               </Field>
-              <Field label="From">
+              <FieldGroup label="From">
                 <DateField
                   allowEmpty
                   value={filter.from ?? ''}
                   onChange={(v) => setFilter({ ...filter, from: v || undefined })}
                 />
-              </Field>
-              <Field label="To">
+              </FieldGroup>
+              <FieldGroup label="To">
                 <DateField
                   allowEmpty
                   value={filter.to ?? ''}
                   onChange={(v) => setFilter({ ...filter, to: v || undefined })}
                 />
-              </Field>
+              </FieldGroup>
             </div>
             <Field label="Search notes and references">
               <TextInput
@@ -250,14 +255,7 @@ function TxnRow({
     onToggle()
   }
 
-  async function createPayee(nm: string) {
-    return (await db.payees.add({
-      name: nm,
-      role: guessPayeeRole(nm),
-      archived: 0,
-      createdAt: Date.now(),
-    } as never)) as string
-  }
+  const createPayee = createPayeeByName
 
   /** Voiding preserves the row so a contractor dispute can still be traced. */
   async function toggleVoid() {
@@ -305,7 +303,7 @@ function TxnRow({
 
       {open && (
         <div className="space-y-3 border-t border-line bg-ground/50 px-4 py-3">
-          <Field label="Paid to" hint="Set this on imported rows that arrived without a payee.">
+          <FieldGroup label="Paid to" hint="Set this on imported rows that arrived without a payee.">
             <ComboBox
               options={payees.filter((p) => !p.archived).map((p) => ({ id: p.id, name: p.name, sub: p.role }))}
               value={payeeId}
@@ -314,37 +312,37 @@ function TxnRow({
               allowClear
               placeholder="Mestri, electrician, supplier…"
             />
-          </Field>
+          </FieldGroup>
 
-          <Field label="For what">
+          <FieldGroup label="For what">
             <ComboBox
               options={categories.map((c) => ({ id: c.id, name: c.name }))}
               value={categoryId}
               onChange={(id) => id && setCategoryId(id)}
+              onCreate={createCategoryByName}
               placeholder="Permissions, masonry, cement…"
             />
-          </Field>
+          </FieldGroup>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Paid from">
-              <Select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
-                {sources.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} · {s.type}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Property">
-              <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
+          <FieldGroup label="Paid from">
+            <ComboBox
+              options={sources.filter((s) => !s.archived).map((s) => ({ id: s.id, name: s.name, sub: s.type }))}
+              value={sourceId}
+              onChange={(id) => id && setSourceId(id)}
+              onCreate={createSourceByName}
+              placeholder="Cash, SBI, GPay…"
+            />
+          </FieldGroup>
+
+          <FieldGroup label="Property">
+            <ComboBox
+              options={projects.map((p) => ({ id: p.id, name: p.name }))}
+              value={projectId}
+              onChange={(id) => id && setProjectId(id)}
+              onCreate={createProjectByName}
+              placeholder="Which property…"
+            />
+          </FieldGroup>
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Change amount">
@@ -355,9 +353,9 @@ function TxnRow({
                 onChange={(e) => setAmount(e.target.value)}
               />
             </Field>
-            <Field label="Date">
+            <FieldGroup label="Date">
               <DateField value={date} onChange={setDate} />
-            </Field>
+            </FieldGroup>
           </div>
 
           <Field label="Note">

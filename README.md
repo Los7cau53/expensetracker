@@ -69,7 +69,7 @@ one you export from next.
 | **Settings** | Customisation first, then sync, backup, restore and Excel import |
 | **Properties** | What has each property cost, split by cost head, source and month |
 | **Ledger** | Every entry, filterable; reassign payee/source/cost head, or void |
-| **Add** | The hot path — one screen, one-handed, sticky property/source/cost head |
+| **Add** | The hot path — one screen, one-handed, everything creatable inline |
 | **Sources** | How much came into each source, how much went out, what is left; edit, archive, merge or delete one |
 | **Payees** | How much each person or supplier has been given, per property |
 | **Data** | Backup, restore, Excel import |
@@ -503,6 +503,27 @@ exactly as the receipt spells the bank.
 **On iPhone this is a picker, not a share sheet.** iOS Safari does not
 implement Web Share Target, so an installed PWA cannot be a share destination:
 pick the screenshot from Photos, or paste it. Needs WASM SIMD (Safari 16.4+).
+
+## Creating as you go
+
+Every dimension on the Add screen — property, payee, cost head, source — is a
+searchable picker that creates on type: enter a name that does not exist and it
+offers `+ Add "…"`. The ledger's row editor works the same way, since that is
+where imported rows get their payee and cost head assigned.
+
+This matters more than it sounds. Only the payee was creatable at first, so
+recording a payment to a new supplier out of a new account meant leaving the
+screen, adding the source, adding the cost head, coming back and starting over.
+At a site, mid-payment, that is the friction that sends someone back to a
+notebook.
+
+What gets inferred is disclosed rather than hidden: a payee's role and a
+source's type are guessed from the name (`src/lib/infer.ts`, the same inference
+the Excel importer uses), and the screen says so — "added \"UPI TEJA ICICI\" as
+a new upi source — change its type in Settings if that is wrong".
+
+The creators live in `src/db/create.ts` rather than in either screen, so the
+Add screen and the ledger editor cannot drift apart.
 
 ## Cleaning up imported history
 

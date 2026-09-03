@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { DateField } from '../components/DateField'
 import { ManagePanel, Notice } from '../components/ManagePanel'
-import { Button, Card, Empty, Field, Money, Screen, Select, Stat, TextInput } from '../components/ui'
+import { Button, Card, Empty, Field, FieldGroup, Money, Screen, Select, Stat, TextInput } from '../components/ui'
 import { sum } from '../db/queries'
 import {
   deleteFundIn,
@@ -232,9 +232,9 @@ function FundInForm({ sourceId, onDone }: { sourceId: Id; onDone: () => void }) 
         <Field label="Amount">
           <TextInput inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
         </Field>
-        <Field label="Date">
+        <FieldGroup label="Date">
           <DateField value={date} onChange={setDate} />
-        </Field>
+        </FieldGroup>
       </div>
       <Field label="Where it came from" hint="Loan disbursement, salary transfer, own savings, sale proceeds.">
         <TextInput value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder="HDFC home loan tranche 2" />
@@ -393,9 +393,9 @@ function FundInRow({
                 onChange={(e) => setAmount(e.target.value)}
               />
             </Field>
-            <Field label="Date">
+            <FieldGroup label="Date">
               <DateField value={date} onChange={setDate} />
-            </Field>
+            </FieldGroup>
           </div>
           <Field label="Where it came from">
             <TextInput value={origin} onChange={(e) => setOrigin(e.target.value)} />

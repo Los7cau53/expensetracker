@@ -47,6 +47,34 @@ export function Field({
   )
 }
 
+/**
+ * A caption above a group of controls, for composite widgets.
+ *
+ * `Field` wraps its children in a `<label>`, which is right for a single
+ * input and wrong for anything with buttons inside: the caption bleeds into
+ * every descendant's accessible name, so a combo box's "Change" button
+ * announced itself as "Paid from Cash in hand". A label must wrap one control.
+ */
+export function FieldGroup({
+  label,
+  hint,
+  children,
+}: {
+  label: string
+  hint?: string
+  children: ReactNode
+}) {
+  return (
+    <div role="group" aria-label={label}>
+      <span className="mb-1 block text-xs font-medium tracking-wide text-muted uppercase">
+        {label}
+      </span>
+      {children}
+      {hint && <span className="mt-1 block text-xs text-muted">{hint}</span>}
+    </div>
+  )
+}
+
 const controlClass =
   'w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20'
 

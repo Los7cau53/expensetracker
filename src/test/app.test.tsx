@@ -307,9 +307,14 @@ describe('fixing up imported rows by hand', () => {
     await user.type(payeeBox, 'Somnath Reddy')
     await user.click(await screen.findByText(/Add “Somnath Reddy”/))
 
-    // Move it off the fallback source onto the account that really paid.
-    const sourceSelect = screen.getByLabelText(/Paid from/i)
-    await user.selectOptions(sourceSelect, String(realSource))
+    // Move it off the fallback source onto the account that really paid. It is
+    // a searchable, creatable picker now rather than a plain select.
+    // Scoped to the field: payee, cost head, source and property each render
+    // their own collapsed picker with a "Change" button.
+    const paidFrom = within(screen.getByRole('group', { name: 'Paid from' }))
+    await user.click(paidFrom.getByRole('button', { name: 'Change' }))
+    await user.type(paidFrom.getByPlaceholderText('Cash, SBI, GPay…'), 'SBI net banking')
+    await user.click(await paidFrom.findByRole('button', { name: /SBI net banking/ }))
 
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
 

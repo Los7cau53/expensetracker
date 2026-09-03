@@ -20,7 +20,7 @@ import { formatPaise } from '../lib/money'
 import { byCreated } from '../db/ids'
 import { db } from '../db/schema'
 import { DateField } from './DateField'
-import { Button, Card, Field, Money, Select, TextInput } from './ui'
+import { Button, Card, Field, FieldGroup, Money, Select, TextInput } from './ui'
 
 /** Columns are addressed by position when a sheet has no header row. */
 function widestRow(sheet: SheetData | undefined): number {
@@ -335,7 +335,7 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
               </Field>
             )}
 
-            <Field
+            <FieldGroup
               label="Date for rows without one"
               hint="Sheets that track a single job often omit dates. Leave blank to reject those rows instead."
             >
@@ -353,7 +353,7 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
                   </Button>
                 )}
               </div>
-            </Field>
+            </FieldGroup>
           </div>
 
           {missingRequired.length > 0 ? (
