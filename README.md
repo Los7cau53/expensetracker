@@ -243,6 +243,25 @@ says `Date (YYYY-MM-DD)` so nobody has to guess.
 Month labels ("Aug 2026" in ledger group headers, "Aug" on the chart axis) stay
 as month names — they are months, not dates.
 
+### Why date entry is not `<input type="date">`
+
+That input renders in the **browser's** locale, which a page cannot set —
+`lang` on the document has no effect in Chrome. On a machine set to US English,
+the same stored date appeared as `02/12/2026` in the field while the app's own
+text said `12/02/2026` right above it. Worse than looking inconsistent: a date
+typed meaning 12 February could be stored as 2 December.
+
+`src/components/DateField.tsx` is therefore a plain text input formatted by us:
+always dd/mm/yyyy, slashes inserted as the digits arrive, an impossible date
+(31/02) flagged rather than rolled into March, and nothing emitted upward until
+eight digits are in — emitting on each keystroke would land a wrong date
+repeatedly.
+
+The native picker is kept beside it, because it is genuinely the best way to
+choose a date on a phone. It only ever *sets* the value and never displays it,
+so its locale cannot mislead anyone. Verified by driving the app in an `en-US`
+browser and asserting that typing `12022026` stores 12 February.
+
 ## Changing an entry after the fact
 
 **Payments** are edited in the Ledger: tap a row to reassign payee, cost head,

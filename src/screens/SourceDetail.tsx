@@ -2,6 +2,7 @@ import type { Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { DateField } from '../components/DateField'
 import { ManagePanel, Notice } from '../components/ManagePanel'
 import { Button, Card, Empty, Field, Money, Screen, Select, Stat, TextInput } from '../components/ui'
 import { sum } from '../db/queries'
@@ -232,7 +233,7 @@ function FundInForm({ sourceId, onDone }: { sourceId: Id; onDone: () => void }) 
           <TextInput inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
         </Field>
         <Field label="Date">
-          <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateField value={date} onChange={setDate} />
         </Field>
       </div>
       <Field label="Where it came from" hint="Loan disbursement, salary transfer, own savings, sale proceeds.">
@@ -393,7 +394,7 @@ function FundInRow({
               />
             </Field>
             <Field label="Date">
-              <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <DateField value={date} onChange={setDate} />
             </Field>
           </div>
           <Field label="Where it came from">

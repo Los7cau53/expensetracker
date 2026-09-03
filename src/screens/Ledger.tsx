@@ -1,6 +1,7 @@
 import type { Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
+import { DateField } from '../components/DateField'
 import { ComboBox } from '../components/ComboBox'
 import { Button, Card, Empty, Field, Money, Screen, Select, TextInput } from '../components/ui'
 import { filterTxns, sum, type TxnFilter } from '../db/queries'
@@ -122,17 +123,17 @@ export default function Ledger() {
                 </Select>
               </Field>
               <Field label="From">
-                <TextInput
-                  type="date"
+                <DateField
+                  allowEmpty
                   value={filter.from ?? ''}
-                  onChange={(e) => setFilter({ ...filter, from: e.target.value || undefined })}
+                  onChange={(v) => setFilter({ ...filter, from: v || undefined })}
                 />
               </Field>
               <Field label="To">
-                <TextInput
-                  type="date"
+                <DateField
+                  allowEmpty
                   value={filter.to ?? ''}
-                  onChange={(e) => setFilter({ ...filter, to: e.target.value || undefined })}
+                  onChange={(v) => setFilter({ ...filter, to: v || undefined })}
                 />
               </Field>
             </div>
@@ -355,7 +356,7 @@ function TxnRow({
               />
             </Field>
             <Field label="Date">
-              <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <DateField value={date} onChange={setDate} />
             </Field>
           </div>
 

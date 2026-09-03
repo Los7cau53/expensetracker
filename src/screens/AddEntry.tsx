@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ComboBox } from '../components/ComboBox'
+import { DateField } from '../components/DateField'
 import { ScreenshotReader } from '../components/ScreenshotReader'
 import { Button, Field, Screen, Select, TextInput } from '../components/ui'
 import { db, PAYEE_ROLES, type PayeeRole } from '../db/schema'
@@ -193,7 +194,7 @@ export default function AddEntry() {
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Date">
-            <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateField value={date} onChange={setDate} />
           </Field>
           <Field label="Property">
             <Select

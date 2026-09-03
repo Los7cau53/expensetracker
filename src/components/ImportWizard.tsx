@@ -19,6 +19,7 @@ import { todayStr } from '../lib/date'
 import { formatPaise } from '../lib/money'
 import { byCreated } from '../db/ids'
 import { db } from '../db/schema'
+import { DateField } from './DateField'
 import { Button, Card, Field, Money, Select, TextInput } from './ui'
 
 /** Columns are addressed by position when a sheet has no header row. */
@@ -339,11 +340,9 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
               hint="Sheets that track a single job often omit dates. Leave blank to reject those rows instead."
             >
               <div className="flex gap-2">
-                <TextInput
-                  type="date"
-                  value={fallbackDate}
-                  onChange={(e) => setFallbackDate(e.target.value)}
-                />
+                <div className="min-w-0 flex-1">
+                  <DateField allowEmpty value={fallbackDate} onChange={setFallbackDate} />
+                </div>
                 {fallbackDate ? (
                   <Button variant="secondary" onClick={() => setFallbackDate('')}>
                     Clear
