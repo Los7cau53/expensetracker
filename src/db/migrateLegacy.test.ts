@@ -125,9 +125,10 @@ describe('migrating off numeric ids', () => {
 
     for (const t of await db.txns.toArray()) {
       // A key left pointing at an old number would silently orphan the row.
-      expect(validSource.has(t.sourceId)).toBe(true)
+      // Legacy rows migrate as ordinary expenses, so both keys are present.
+      expect(validSource.has(t.sourceId!)).toBe(true)
       expect(validProject.has(t.projectId)).toBe(true)
-      expect(validCategory.has(t.categoryId)).toBe(true)
+      expect(validCategory.has(t.categoryId!)).toBe(true)
       if (t.payeeId !== undefined) expect(validPayee.has(t.payeeId)).toBe(true)
     }
     for (const f of await db.fundIns.toArray()) {

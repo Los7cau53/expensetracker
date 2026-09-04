@@ -20,10 +20,12 @@ export default function Payees() {
   const visible = totals
     .filter((t) => (roleFilter ? t.payee.role === roleFilter : true))
     // Someone with no payments is noise here; they still exist for the picker.
-    .filter((t) => t.txnCount > 0 || !roleFilter)
+    // Anyone still owed money is kept regardless, so a debt never hides.
+    .filter((t) => t.txnCount > 0 || t.owed > 0 || !roleFilter)
 
   const grandTotal = sum(visible.map((t) => t.total))
   const paidCount = visible.filter((t) => t.txnCount > 0).length
+  const totalOwed = sum(totals.map((t) => Math.max(0, t.owed)))
 
   return (
     <Screen
@@ -37,7 +39,11 @@ export default function Payees() {
       <div className="mx-auto max-w-2xl space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Stat label="Total paid out" value={<Money paise={grandTotal} />} />
-          <Stat label="People & suppliers" value={paidCount} />
+          {totalOwed > 0 ? (
+            <Stat label="You owe" value={<Money paise={totalOwed} />} tone="text-out" />
+          ) : (
+            <Stat label="People & suppliers" value={paidCount} />
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -72,14 +78,21 @@ export default function Payees() {
           <Empty title="No payees yet" hint="They get created as you record payments." />
         ) : (
           <Card className="divide-y divide-line">
-            {visible.map(({ payee, total, txnCount, lastPaid }) => (
+            {visible.map(({ payee, total, txnCount, lastPaid, owed }) => (
               <Link
                 key={payee.id}
                 to={`/payees/${payee.id}`}
                 className="flex items-baseline justify-between gap-3 px-4 py-3 hover:bg-ground"
               >
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{payee.name}</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="truncate font-medium">{payee.name}</span>
+                    {owed > 0 && (
+                      <span className="shrink-0 rounded-full bg-out/10 px-2 py-0.5 text-[11px] font-medium text-out">
+                        owe <Money paise={owed} />
+                      </span>
+                    )}
+                  </div>
                   <div className="truncate text-xs text-muted">
                     {payee.role} · {txnCount} {txnCount === 1 ? 'payment' : 'payments'}
                     {lastPaid ? ` · last ${formatDate(lastPaid)}` : ''}

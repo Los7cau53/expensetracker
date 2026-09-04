@@ -49,6 +49,7 @@ export default function Summary() {
   const {
     spent, fundsIn, available, txnCount, payeeCount, firstDate, lastDate,
     timeline, byMonth, byCategory, bySource, byPayee, byProject,
+    totalOwed, owedByFronter,
   } = data
 
   const scopeLabel = [
@@ -108,6 +109,32 @@ export default function Summary() {
             ))}
           </div>
         </div>
+
+        {totalOwed > 0 && (
+          <section className="rounded-xl border border-out/30 bg-out/5 px-4 py-4">
+            <div className="flex items-baseline justify-between">
+              <p className="text-xs font-medium tracking-wide text-out uppercase">You owe</p>
+              <p className="text-xl font-semibold text-out">{formatPaise(totalOwed)}</p>
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              Money others fronted on your behalf, not yet repaid.
+            </p>
+            <div className="mt-3 divide-y divide-out/10">
+              {owedByFronter.map((r) => (
+                <Link
+                  key={r.id}
+                  to={`/payees/${r.id}`}
+                  className="flex items-baseline justify-between gap-3 py-2 text-sm hover:opacity-80"
+                >
+                  <span className="min-w-0 truncate">
+                    {r.name} <span className="text-xs text-muted">· {r.role}</span>
+                  </span>
+                  <span className="tnum shrink-0 font-medium text-out">{formatPaise(r.total)}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {txnCount === 0 ? (
           <div className="rounded-xl border border-dashed border-line px-4 py-12 text-center">

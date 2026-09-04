@@ -215,7 +215,7 @@ describe('ledger', () => {
     // UUID keys mean toArray() has no meaningful order, so "the first
     // category" is no longer a thing a test can rely on.
     const costHead = (await db.categories.get(
-      (await db.txns.toArray())[0].categoryId,
+      (await db.txns.toArray())[0].categoryId!,
     ))!.name
     await user.click(await screen.findByText(costHead))
     await user.click(await screen.findByRole('button', { name: 'Void' }))

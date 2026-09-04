@@ -356,9 +356,15 @@ export async function downloadCsv(): Promise<string> {
   const name = <T extends { id: Id; name: string }>(xs: T[], id?: Id) =>
     id === undefined ? '' : xs.find((x) => x.id === id)?.name ?? ''
 
+  const kindLabel: Record<string, string> = {
+    expense: 'Payment',
+    onbehalf: 'On behalf',
+    settlement: 'Repayment',
+  }
+
   const header = [
-    'Date (YYYY-MM-DD)', 'Property', 'Paid to', 'Role', 'For what', 'Paid from',
-    'Amount (INR)', 'Note', 'Reference', 'Voided',
+    'Date (YYYY-MM-DD)', 'Kind', 'Property', 'Paid to', 'Role', 'Fronted by', 'For what',
+    'Paid from', 'Amount (INR)', 'Note', 'Reference', 'Voided',
   ]
 
   const rows = txns.map((t) => [
@@ -367,9 +373,11 @@ export async function downloadCsv(): Promise<string> {
     // row of an export meant for a CA or a bank. ISO is unambiguous
     // everywhere and sorts correctly as text.
     t.date,
+    kindLabel[t.kind ?? 'expense'] ?? 'Payment',
     name(projects, t.projectId),
     name(payees, t.payeeId),
     t.payeeId ? payees.find((p) => p.id === t.payeeId)?.role ?? '' : '',
+    name(payees, t.fronterId),
     name(categories, t.categoryId),
     name(sources, t.sourceId),
     (t.amount / 100).toFixed(2),

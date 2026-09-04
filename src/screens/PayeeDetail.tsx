@@ -23,7 +23,7 @@ import {
   setPayeeArchived,
   updatePayee,
 } from '../db/manage'
-import { db, PAYEE_ROLES, type Payee, type PayeeRole } from '../db/schema'
+import { db, PAYEE_ROLES, txnKind, type Payee, type PayeeRole, type Txn } from '../db/schema'
 import { formatDate } from '../lib/date'
 
 /** One payee's full ledger, split by property. */
@@ -35,8 +35,15 @@ export default function PayeeDetail() {
   const [error, setError] = useState<string | null>(null)
 
   const payee = useLiveQuery(() => db.payees.get(id), [id])
-  const txns = useLiveQuery(
+  // Money paid to them: ordinary payments and repayments. Both carry payeeId.
+  const paidTxns = useLiveQuery(
     () => db.txns.where('[payeeId+voided]').equals([id, 0]).toArray(),
+    [id],
+    [],
+  )
+  // Money they fronted on your behalf: on-behalf rows name them as fronterId.
+  const frontedTxns = useLiveQuery(
+    () => db.txns.where('fronterId').equals(id).filter((t) => t.voided === 0).toArray(),
     [id],
     [],
   )
@@ -48,13 +55,41 @@ export default function PayeeDetail() {
 
   if (!payee) return <Screen title="Payee"><Empty title="Payee not found" /></Screen>
 
-  const total = sum(txns.map((t) => t.amount))
-  const sorted = [...txns].sort((a, b) => b.date.localeCompare(a.date))
+  const total = sum(paidTxns.map((t) => t.amount))
+  const fronted = sum(frontedTxns.map((t) => t.amount))
+  const repaid = sum(paidTxns.filter((t) => txnKind(t) === 'settlement').map((t) => t.amount))
+  const owed = fronted - repaid
+
+  // One timeline of every interaction, most recent first.
+  const entries = [...paidTxns, ...frontedTxns].sort((a, b) => b.date.localeCompare(a.date))
 
   const byProject = projects
-    .map((p) => ({ project: p, total: sum(txns.filter((t) => t.projectId === p.id).map((t) => t.amount)) }))
+    .map((p) => ({ project: p, total: sum(paidTxns.filter((t) => t.projectId === p.id).map((t) => t.amount)) }))
     .filter((r) => r.total > 0)
     .sort((a, b) => b.total - a.total)
+
+  const catName = (cid?: string) => categories.find((c) => c.id === cid)?.name ?? '—'
+  const projName = (pid?: string) => projects.find((p) => p.id === pid)?.name ?? '—'
+  const srcName = (sid?: string) => sources.find((s) => s.id === sid)?.name ?? '—'
+
+  /** How one row reads, given its kind. */
+  function describe(t: Txn): { title: string; sub: string } {
+    const k = txnKind(t)
+    if (k === 'onbehalf')
+      return {
+        title: `Fronted · ${catName(t.categoryId)}`,
+        sub: `${formatDate(t.date)} · ${projName(t.projectId)}${t.note ? ` · ${t.note}` : ''}`,
+      }
+    if (k === 'settlement')
+      return {
+        title: 'Repayment',
+        sub: `${formatDate(t.date)} · ${srcName(t.sourceId)}${t.note ? ` · ${t.note}` : ''}`,
+      }
+    return {
+      title: catName(t.categoryId),
+      sub: `${formatDate(t.date)} · ${projName(t.projectId)} · ${srcName(t.sourceId)}${t.note ? ` · ${t.note}` : ''}`,
+    }
+  }
 
   return (
     <Screen
@@ -82,9 +117,35 @@ export default function PayeeDetail() {
 
         <div className="grid grid-cols-3 gap-3">
           <Stat label="Total paid" value={<Money paise={total} />} />
-          <Stat label="Payments" value={txns.length} />
+          {owed > 0 ? (
+            <Stat label="You owe" value={<Money paise={owed} />} tone="text-out" />
+          ) : (
+            <Stat label="Payments" value={paidTxns.length} />
+          )}
           <Stat label="Role" value={payee.role} />
         </div>
+
+        {owed > 0 && (
+          <Card className="flex items-center justify-between gap-3 p-4">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">
+                You owe {payee.name} <Money paise={owed} className="font-semibold" />
+              </div>
+              <div className="text-xs text-muted">
+                Fronted <Money paise={fronted} /> · repaid <Money paise={repaid} />
+              </div>
+            </div>
+            <Button
+              onClick={() =>
+                navigate('/add', {
+                  state: { kind: 'settlement', payeeId: id, amount: (owed / 100).toString() },
+                })
+              }
+            >
+              Repay
+            </Button>
+          </Card>
+        )}
 
         {payee.phone && (
           <a href={`tel:${payee.phone}`} className="block px-1 text-sm text-accent">
@@ -107,25 +168,25 @@ export default function PayeeDetail() {
           </Card>
         )}
 
-        {sorted.length === 0 ? (
-          <Empty title="No payments recorded to this payee" />
+        {entries.length === 0 ? (
+          <Empty title="Nothing recorded with this payee yet" />
         ) : (
           <Card className="divide-y divide-line">
-            {sorted.map((t) => (
-              <div key={t.id} className="flex items-baseline justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">
-                    {categories.find((c) => c.id === t.categoryId)?.name ?? '—'}
+            {entries.map((t) => {
+              const { title, sub } = describe(t)
+              const isFronted = txnKind(t) === 'onbehalf'
+              return (
+                <div key={t.id} className="flex items-baseline justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{title}</div>
+                    <div className="truncate text-xs text-muted">{sub}</div>
                   </div>
-                  <div className="truncate text-xs text-muted">
-                    {formatDate(t.date)} · {projects.find((p) => p.id === t.projectId)?.name ?? '—'} ·{' '}
-                    {sources.find((s) => s.id === t.sourceId)?.name ?? '—'}
-                    {t.note ? ` · ${t.note}` : ''}
-                  </div>
+                  <span className={`shrink-0 font-semibold ${isFronted ? 'text-muted' : ''}`}>
+                    <Money paise={t.amount} />
+                  </span>
                 </div>
-                <span className="shrink-0 font-semibold"><Money paise={t.amount} /></span>
-              </div>
-            ))}
+              )
+            })}
           </Card>
         )}
 
