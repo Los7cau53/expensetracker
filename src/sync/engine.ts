@@ -1,5 +1,6 @@
 import { db, SYNCED_TABLES, type SyncedTable } from '../db/schema'
 import type { Id } from '../db/ids'
+import { SEED_STAMP } from '../db/seed'
 import { EMPTY_RESULT, type RemoteRecord, type RemoteStore, type SyncResult } from './types'
 
 const PUSHED_KEY = 'syncPushedThrough'
@@ -25,6 +26,10 @@ function table(name: SyncedTable) {
  * Selection is by the record's own `updatedAt` rather than a dirty flag: the
  * stamp is written by a Dexie hook on every insert and update, so nothing can
  * be changed without becoming eligible, however it was changed.
+ *
+ * Untouched seeded defaults sit at `SEED_STAMP` and so are never eligible.
+ * That is deliberate: sending one would overwrite the remote's tombstone for a
+ * default the user deleted elsewhere, and put it back on every device.
  */
 export async function pendingChanges(since: number): Promise<RemoteRecord[]> {
   const out: RemoteRecord[] = []
@@ -100,6 +105,38 @@ export async function applyRemote(records: RemoteRecord[]): Promise<{
 }
 
 /**
+ * Promotes seeded defaults the remote has never heard of into real records.
+ *
+ * Defaults are held back from every push (see `pendingChanges`), which is what
+ * stops a late device resurrecting deleted ones — but it would also leave the
+ * remote with no copy of them at all, so a payment filed under "Masonry" would
+ * depend on every device seeding an identical list forever. On the one pass
+ * that reads the whole remote, its opinion of each default is known: whatever
+ * it did not mention, it has never seen, and this device adopts.
+ *
+ * A default the remote *did* mention was already resolved by `applyRemote` —
+ * renamed here, or deleted here — so it is no longer sitting at `SEED_STAMP`
+ * and is left alone.
+ */
+async function adoptUnknownSeeds(incoming: RemoteRecord[]): Promise<RemoteRecord[]> {
+  const known = new Set(incoming.map((r) => `${r.table}:${r.id}`))
+  const updatedAt = Date.now()
+  const adopted: RemoteRecord[] = []
+
+  for (const name of SYNCED_TABLES) {
+    for (const row of await table(name).toArray()) {
+      const id = row.id as Id
+      if (Number(row.updatedAt ?? 0) !== SEED_STAMP) continue
+      if (known.has(`${name}:${id}`)) continue
+      adopted.push({ table: name, id, updatedAt, data: { ...row, updatedAt } })
+    }
+  }
+
+  for (const r of adopted) await table(r.table).bulkPut([r.data])
+  return adopted
+}
+
+/**
  * One push-then-pull pass.
  *
  * Push first so a fresh device's work reaches the remote before anything can
@@ -115,6 +152,18 @@ export async function syncOnce(remote: RemoteStore): Promise<SyncResult> {
 
   const incoming = await remote.pull(pulledThrough)
   const { applied, skippedStale, deletedLocally } = await applyRemote(incoming)
+
+  // Only on a pass that pulled from the beginning of time, since only then is
+  // `incoming` the remote's whole story rather than a recent slice of it.
+  if (pulledThrough === 0) {
+    const adopted = await adoptUnknownSeeds(incoming)
+    if (adopted.length > 0) {
+      // Sent in this pass rather than left for the next one, so the cursor
+      // below covers them and they are not sent twice.
+      await remote.push(adopted)
+      outgoing.push(...adopted)
+    }
+  }
 
   // Advanced only after the work succeeded, so a failure mid-way is retried
   // rather than skipped. Cursors track record stamps, not wall-clock now, so a

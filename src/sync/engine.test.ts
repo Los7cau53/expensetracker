@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../db/schema'
 import { seedIfEmpty } from '../db/seed'
-import { deleteSource, mergePayees } from '../db/manage'
+import { deleteCategory, deleteSource, mergePayees, updateCategory } from '../db/manage'
 import { sum } from '../db/queries'
 import { applyRemote, pendingChanges, resetSyncCursors, syncCursors, syncOnce } from './engine'
 import type { RemoteRecord, RemoteStore } from './types'
@@ -305,5 +305,84 @@ describe('seeded defaults across devices', () => {
 
     expect(await db.sources.count()).toBe(1)
     expect(await db.projects.count()).toBe(1)
+  })
+
+  /**
+   * The failure this guards: every device seeds the *same* derived ids, so a
+   * device set up later holds a freshly stamped "Painting" that is newer than
+   * the remote's deletion of it. It used to win — reinstating the cost heads
+   * the user had deleted, reverting the ones they had renamed, and pushing
+   * that back over the work on the device where they did it.
+   */
+  it('keeps a rename and a deletion made before this device existed', async () => {
+    const remote = new FakeRemote()
+    const cats = await db.categories.toArray()
+    const renamed = cats.find((c) => c.name === 'Masonry')!
+    const removed = cats.find((c) => c.name === 'Painting')!
+
+    await updateCategory(renamed.id, 'Brick work')
+    await deleteCategory(removed.id)
+    await syncOnce(remote)
+
+    // A second device: seeds the whole default list, then meets the remote.
+    await reset()
+    await syncOnce(remote)
+
+    expect((await db.categories.get(renamed.id))?.name).toBe('Brick work')
+    expect(await db.categories.get(removed.id)).toBeUndefined()
+    // And it must not have pushed its own defaults over either change, which
+    // is how the first device got them back.
+    expect(remote.rows.get(`categories:${removed.id}`)?.deleted).toBe(true)
+    expect(remote.rows.get(`categories:${renamed.id}`)?.data?.name).toBe('Brick work')
+  })
+
+  it('lets the remote win over defaults seeded by an older build', async () => {
+    const remote = new FakeRemote()
+    const cats = await db.categories.toArray()
+    const renamed = cats.find((c) => c.name === 'Masonry')!
+    const removed = cats.find((c) => c.name === 'Painting')!
+    await updateCategory(renamed.id, 'Brick work')
+    await deleteCategory(removed.id)
+    await syncOnce(remote)
+
+    // An already-installed device, whose defaults carry the wall-clock of its
+    // own first run — what every install before SEED_STAMP looks like.
+    await reset()
+    const firstRun = Date.now() + 60_000
+    for (const c of await db.categories.toArray()) {
+      await db.categories.update(c.id, { updatedAt: firstRun })
+    }
+    await seedIfEmpty()
+    await syncOnce(remote)
+
+    expect((await db.categories.get(renamed.id))?.name).toBe('Brick work')
+    expect(await db.categories.get(removed.id)).toBeUndefined()
+  })
+
+  it('leaves a default alone once the user has edited it', async () => {
+    const renamed = (await db.categories.toArray()).find((c) => c.name === 'Masonry')!
+    await updateCategory(renamed.id, 'Brick work')
+
+    // Re-running startup must not demote a rename to a placeholder, or the
+    // device would stop sending it.
+    await seedIfEmpty()
+
+    const changes = await pendingChanges(0)
+    expect(changes.some((c) => c.table === 'categories' && c.id === renamed.id)).toBe(true)
+  })
+
+  it('still puts the untouched defaults on the remote', async () => {
+    const remote = new FakeRemote()
+    // Held back from a normal push, they would otherwise exist nowhere but on
+    // the devices that happen to seed the same list, and a payment filed under
+    // one of them would have nothing to resolve against.
+    await syncOnce(remote)
+
+    const local = (await db.categories.toArray()).map((c) => c.name).sort()
+    const onRemote = [...remote.rows.values()]
+      .filter((r) => r.table === 'categories' && !r.deleted)
+      .map((r) => r.data!.name as string)
+      .sort()
+    expect(onRemote).toEqual(local)
   })
 })
