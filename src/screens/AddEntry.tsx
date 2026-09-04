@@ -1,12 +1,12 @@
 import { byCreated, type Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ComboBox } from '../components/ComboBox'
 import { DateField } from '../components/DateField'
 import { ScreenshotReader } from '../components/ScreenshotReader'
 import { Button, Field, FieldGroup, Screen, Select, TextInput } from '../components/ui'
-import { db, PAYEE_ROLES, type PayeeRole } from '../db/schema'
+import { db, PAYEE_ROLES, type PayeeRole, type TxnKind } from '../db/schema'
 import { todayStr } from '../lib/date'
 import {
   createCategoryByName,
@@ -20,8 +20,31 @@ import { guessPayeeRole } from '../lib/infer'
 import { formatPaise, parseAmountToPaise } from '../lib/money'
 import { usePref } from '../lib/prefs'
 
+/** The three ways a payment can be recorded, and how the form labels each. */
+const KINDS: { key: TxnKind; label: string; blurb: string }[] = [
+  { key: 'expense', label: 'Payment', blurb: 'Money you paid, out of one of your sources.' },
+  {
+    key: 'onbehalf',
+    label: 'Paid on my behalf',
+    blurb: 'Someone else paid for this. It counts toward the cost head and you now owe them.',
+  },
+  {
+    key: 'settlement',
+    label: 'Repay someone',
+    blurb: 'Pay back money someone fronted. Moves your money without re-counting the cost head.',
+  },
+]
+
+/** Prefill handed over from the Repay button on a payee's page. */
+interface AddPrefill {
+  kind?: TxnKind
+  payeeId?: Id
+  amount?: string
+}
+
 export default function AddEntry() {
   const navigate = useNavigate()
+  const prefill = (useLocation().state as AddPrefill | null) ?? null
 
   // Explicitly ordered: UUID primary keys give no meaningful default order,
   // and these lists decide which project and source a new entry defaults to.
@@ -43,6 +66,8 @@ export default function AddEntry() {
     [],
   )
 
+  const [kind, setKind] = useState<TxnKind>(prefill?.kind ?? 'expense')
+
   // Project, source and category persist between entries: at a site you record
   // six payments in a row against the same property, and re-picking each time
   // is the friction that sends people back to a notebook.
@@ -50,9 +75,13 @@ export default function AddEntry() {
   const [sourceId, setSourceId] = usePref<Id | undefined>('lastSource', undefined)
   const [categoryId, setCategoryId] = usePref<Id | undefined>('lastCategory', undefined)
 
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(prefill?.amount ?? '')
   const [date, setDate] = useState(todayStr())
-  const [payeeId, setPayeeId] = useState<Id | undefined>()
+  // The person the money reaches: the recipient on a payment, the person being
+  // repaid on a settlement.
+  const [payeeId, setPayeeId] = useState<Id | undefined>(prefill?.payeeId)
+  // The person who fronted the money, on an on-behalf entry.
+  const [fronterId, setFronterId] = useState<Id | undefined>()
   const [note, setNote] = useState('')
   const [refNo, setRefNo] = useState('')
   const [saved, setSaved] = useState<string | null>(null)
@@ -67,13 +96,20 @@ export default function AddEntry() {
   const paise = parseAmountToPaise(amount)
   const selectedPayee = payees.find((p) => p.id === payeeId)
 
+  const needsSource = kind !== 'onbehalf'
+  const needsCategory = kind !== 'settlement'
+
   const negative = paise !== null && paise < 0
-  // Negatives are allowed: a reversed online payment or a refund has to reduce
-  // net spend. The importer has always kept them and every total already nets
-  // them; only this screen refused, so the two disagreed. Zero is still
-  // rejected — it records nothing.
+  // Negatives are allowed on a payment: a reversed online payment or a refund
+  // has to reduce net spend. Zero is always rejected — it records nothing.
   const canSave =
-    paise !== null && paise !== 0 && effectiveProject && effectiveSource && categoryId
+    paise !== null &&
+    paise !== 0 &&
+    Boolean(effectiveProject) &&
+    (!needsSource || Boolean(effectiveSource)) &&
+    (!needsCategory || Boolean(categoryId)) &&
+    (kind !== 'onbehalf' || Boolean(fronterId)) &&
+    (kind !== 'settlement' || Boolean(payeeId))
 
   async function save(andAnother: boolean) {
     setError(null)
@@ -82,23 +118,44 @@ export default function AddEntry() {
       return
     }
     if (!canSave) {
-      setError('Enter an amount and pick a project, category and source.')
+      setError(problem())
       return
     }
     const now = Date.now()
-    await db.txns.add({
+    const base = {
       date,
       projectId: effectiveProject!,
       amount: paise!,
-      sourceId: effectiveSource!,
-      payeeId,
-      categoryId: categoryId!,
       note: note.trim() || undefined,
       refNo: refNo.trim() || undefined,
-      voided: 0,
+      voided: 0 as const,
       createdAt: now,
       updatedAt: now,
-    } as never)
+    }
+
+    if (kind === 'onbehalf') {
+      await db.txns.add({
+        ...base,
+        kind: 'onbehalf',
+        fronterId,
+        categoryId: categoryId!,
+      } as never)
+    } else if (kind === 'settlement') {
+      await db.txns.add({
+        ...base,
+        kind: 'settlement',
+        payeeId,
+        sourceId: effectiveSource!,
+      } as never)
+    } else {
+      await db.txns.add({
+        ...base,
+        kind: 'expense',
+        payeeId,
+        categoryId: categoryId!,
+        sourceId: effectiveSource!,
+      } as never)
+    }
 
     setSaved(`Saved ${formatPaise(paise!)}`)
     setAmount('')
@@ -107,11 +164,20 @@ export default function AddEntry() {
     setCreated(null)
 
     if (andAnother) {
-      // Keep payee and date — consecutive site entries usually share both.
+      // Keep payee/fronter and date — consecutive site entries usually share both.
       setTimeout(() => setSaved(null), 2200)
     } else {
       navigate('/ledger')
     }
+  }
+
+  /** A specific reason the current form cannot be saved yet. */
+  function problem(): string {
+    if (kind === 'onbehalf')
+      return 'Enter an amount and pick a property, cost head and who paid on your behalf.'
+    if (kind === 'settlement')
+      return 'Enter an amount and pick who you are repaying and the source it comes from.'
+    return 'Enter an amount and pick a project, category and source.'
   }
 
   /**
@@ -177,16 +243,42 @@ export default function AddEntry() {
     if (payeeId) await db.payees.update(payeeId, { role })
   }
 
+  const activeKind = KINDS.find((k) => k.key === kind)!
+
   return (
     <Screen title="Add payment">
       <div className="mx-auto max-w-2xl space-y-4">
-        {reading ? (
-          <ScreenshotReader onExtract={(f) => void applyReceipt(f)} onClose={() => setReading(false)} />
-        ) : (
-          <Button variant="secondary" className="w-full" onClick={() => setReading(true)}>
-            Read a payment screenshot
-          </Button>
-        )}
+        <div>
+          <div
+            className="flex rounded-lg border border-line bg-surface p-0.5"
+            role="group"
+            aria-label="What to record"
+          >
+            {KINDS.map((k) => (
+              <button
+                key={k.key}
+                type="button"
+                aria-pressed={kind === k.key}
+                onClick={() => setKind(k.key)}
+                className={`flex-1 rounded-md px-2 py-2 text-xs font-medium transition ${
+                  kind === k.key ? 'bg-accent text-white' : 'text-muted hover:bg-ground'
+                }`}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 px-1 text-xs text-muted">{activeKind.blurb}</p>
+        </div>
+
+        {kind === 'expense' &&
+          (reading ? (
+            <ScreenshotReader onExtract={(f) => void applyReceipt(f)} onClose={() => setReading(false)} />
+          ) : (
+            <Button variant="secondary" className="w-full" onClick={() => setReading(true)}>
+              Read a payment screenshot
+            </Button>
+          ))}
 
         {matchNote && (
           <p className="rounded-lg bg-accent/5 px-3 py-2 text-xs text-muted">{matchNote}</p>
@@ -195,7 +287,11 @@ export default function AddEntry() {
           <p className="rounded-lg bg-in/10 px-3 py-2 text-xs text-muted">{created}</p>
         )}
 
-        <FieldGroup label="Amount paid">
+        <FieldGroup
+          label={
+            kind === 'onbehalf' ? 'Amount they paid' : kind === 'settlement' ? 'Amount to repay' : 'Amount paid'
+          }
+        >
           <div className="flex items-stretch gap-2">
             <input
               value={amount}
@@ -225,7 +321,7 @@ export default function AddEntry() {
             </button>
           </div>
 
-          {negative && (
+          {negative && kind === 'expense' && (
             <span className="mt-1 block text-xs text-out">
               Recorded as a reversal: it reduces net spend and puts the money back on the source.
             </span>
@@ -257,18 +353,44 @@ export default function AddEntry() {
           </FieldGroup>
         </div>
 
-        <FieldGroup label="Paid to" hint="Leave empty for counter payments with no named recipient.">
-          <ComboBox
-            options={payees.map((p) => ({ id: p.id, name: p.name, sub: p.role }))}
-            value={payeeId}
-            onChange={setPayeeId}
-            onCreate={createPayee}
-            allowClear
-            placeholder="Mestri, electrician, supplier…"
-          />
-        </FieldGroup>
+        {kind === 'onbehalf' && (
+          <FieldGroup label="Paid by" hint="Who fronted the money — you will owe them until you repay.">
+            <ComboBox
+              options={payees.map((p) => ({ id: p.id, name: p.name, sub: p.role }))}
+              value={fronterId}
+              onChange={setFronterId}
+              onCreate={createPayee}
+              placeholder="Mestri, partner, relative…"
+            />
+          </FieldGroup>
+        )}
 
-        {selectedPayee?.role === 'other' && (
+        {kind === 'settlement' && (
+          <FieldGroup label="Repay to" hint="The person you are paying back.">
+            <ComboBox
+              options={payees.map((p) => ({ id: p.id, name: p.name, sub: p.role }))}
+              value={payeeId}
+              onChange={setPayeeId}
+              onCreate={createPayee}
+              placeholder="Who fronted the money…"
+            />
+          </FieldGroup>
+        )}
+
+        {kind === 'expense' && (
+          <FieldGroup label="Paid to" hint="Leave empty for counter payments with no named recipient.">
+            <ComboBox
+              options={payees.map((p) => ({ id: p.id, name: p.name, sub: p.role }))}
+              value={payeeId}
+              onChange={setPayeeId}
+              onCreate={createPayee}
+              allowClear
+              placeholder="Mestri, electrician, supplier…"
+            />
+          </FieldGroup>
+        )}
+
+        {kind === 'expense' && selectedPayee?.role === 'other' && (
           <Field label={`What does ${selectedPayee.name} do?`} hint="Sets their role for role-wise reports.">
             <Select defaultValue="other" onChange={(e) => void setPayeeRole(e.target.value as PayeeRole)}>
               {PAYEE_ROLES.map((r) => (
@@ -280,35 +402,39 @@ export default function AddEntry() {
           </Field>
         )}
 
-        <FieldGroup label="For what">
-          <ComboBox
-            options={categories.map((c) => ({ id: c.id, name: c.name }))}
-            value={categoryId}
-            onChange={setCategoryId}
-            onCreate={async (name) => {
-              const id = await createCategoryByName(name)
-              setCreated(`added "${name}" as a new cost head`)
-              return id
-            }}
-            placeholder="Permissions, masonry, cement…"
-          />
-        </FieldGroup>
+        {needsCategory && (
+          <FieldGroup label="For what">
+            <ComboBox
+              options={categories.map((c) => ({ id: c.id, name: c.name }))}
+              value={categoryId}
+              onChange={setCategoryId}
+              onCreate={async (name) => {
+                const id = await createCategoryByName(name)
+                setCreated(`added "${name}" as a new cost head`)
+                return id
+              }}
+              placeholder="Permissions, masonry, cement…"
+            />
+          </FieldGroup>
+        )}
 
-        <FieldGroup label="Paid from">
-          <ComboBox
-            options={sources.map((s) => ({ id: s.id, name: s.name, sub: s.type }))}
-            value={effectiveSource}
-            onChange={setSourceId}
-            onCreate={async (name) => {
-              const id = await createSourceByName(name)
-              setCreated(
-                `added "${name}" as a new ${guessedSourceTypeFor(name)} source — change its type in Settings if that is wrong`,
-              )
-              return id
-            }}
-            placeholder="Cash, SBI, GPay…"
-          />
-        </FieldGroup>
+        {needsSource && (
+          <FieldGroup label={kind === 'settlement' ? 'Repay from' : 'Paid from'}>
+            <ComboBox
+              options={sources.map((s) => ({ id: s.id, name: s.name, sub: s.type }))}
+              value={effectiveSource}
+              onChange={setSourceId}
+              onCreate={async (name) => {
+                const id = await createSourceByName(name)
+                setCreated(
+                  `added "${name}" as a new ${guessedSourceTypeFor(name)} source — change its type in Settings if that is wrong`,
+                )
+                return id
+              }}
+              placeholder="Cash, SBI, GPay…"
+            />
+          </FieldGroup>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Note">

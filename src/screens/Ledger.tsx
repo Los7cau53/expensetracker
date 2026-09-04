@@ -7,11 +7,14 @@ import { Button, Card, Empty, Field, FieldGroup, Money, Screen, Select, TextInpu
 import { filterTxns, sum, type TxnFilter } from '../db/queries'
 import {
   db,
+  txnKind,
+  TXN_KINDS,
   type Category,
   type Payee,
   type Project,
   type Source,
   type Txn,
+  type TxnKind,
 } from '../db/schema'
 import { formatDate, formatMonth, monthOf } from '../lib/date'
 import {
@@ -127,6 +130,21 @@ export default function Ledger() {
                   ))}
                 </Select>
               </Field>
+              <Field label="Kind">
+                <Select
+                  value={filter.kind ?? ''}
+                  onChange={(e) =>
+                    setFilter({ ...filter, kind: (e.target.value as TxnKind) || undefined })
+                  }
+                >
+                  <option value="">All</option>
+                  {TXN_KINDS.map((k) => (
+                    <option key={k} value={k}>
+                      {k === 'onbehalf' ? 'On behalf' : k === 'settlement' ? 'Repayment' : 'Payment'}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <FieldGroup label="From">
                 <DateField
                   allowEmpty
@@ -225,28 +243,58 @@ function TxnRow({
   payees: Payee[]
   categories: Category[]
 }) {
+  const kind = txnKind(txn)
+
   // Draft state is seeded from the row and reset when the editor reopens, so
   // reassigning forty imported rows in a row does not carry values across.
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(txn.date)
   const [note, setNote] = useState(txn.note ?? '')
   const [payeeId, setPayeeId] = useState(txn.payeeId)
+  const [fronterId, setFronterId] = useState(txn.fronterId)
   const [categoryId, setCategoryId] = useState(txn.categoryId)
   const [sourceId, setSourceId] = useState(txn.sourceId)
   const [projectId, setProjectId] = useState(txn.projectId)
   const [saved, setSaved] = useState(false)
 
+  const showSource = kind !== 'onbehalf'
+  const showCategory = kind !== 'settlement'
+  const showPayee = kind !== 'onbehalf'
+  const showFronter = kind === 'onbehalf'
+
+  // How the collapsed row reads, per kind. Imported history often has no payee,
+  // so an expense falls back to its note or cost head to stay scannable.
+  const primary =
+    kind === 'onbehalf'
+      ? name.payee(txn.fronterId)
+      : kind === 'settlement'
+        ? `Repaid ${name.payee(txn.payeeId)}`
+        : txn.payeeId
+          ? name.payee(txn.payeeId)
+          : txn.note || name.category(txn.categoryId)
+  const secondary =
+    kind === 'onbehalf'
+      ? `${formatDate(txn.date)} · fronted · ${name.category(txn.categoryId)}`
+      : kind === 'settlement'
+        ? `${formatDate(txn.date)} · repayment · ${name.source(txn.sourceId)}`
+        : `${formatDate(txn.date)}${
+            txn.payeeId ? ` · ${name.category(txn.categoryId)}` : ' · no payee'
+          } · ${name.source(txn.sourceId)}`
+
   async function saveEdits() {
     const paise = amount.trim() ? parseAmountToPaise(amount) : txn.amount
     // Negatives are fine here — a reversal. Zero is not: it records nothing.
     if (paise === null || paise === 0) return
+    // Only the fields that belong to this kind are written, so editing an
+    // on-behalf or repayment row never grows a stray source or cost head.
     await db.txns.update(txn.id, {
       amount: paise,
       date,
       note: note.trim() || undefined,
-      payeeId,
-      categoryId,
-      sourceId,
+      payeeId: showPayee ? payeeId : undefined,
+      fronterId: showFronter ? fronterId : undefined,
+      categoryId: showCategory ? categoryId : undefined,
+      sourceId: showSource ? sourceId : undefined,
       projectId,
       updatedAt: Date.now(),
     })
@@ -272,6 +320,7 @@ function TxnRow({
     date !== txn.date ||
     (note.trim() || undefined) !== txn.note ||
     payeeId !== txn.payeeId ||
+    fronterId !== txn.fronterId ||
     categoryId !== txn.categoryId ||
     sourceId !== txn.sourceId ||
     projectId !== txn.projectId
@@ -284,18 +333,16 @@ function TxnRow({
         className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-ground"
       >
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">
-            {/* Imported history often has no payee — falling back to the note
-                or cost head keeps the list scannable instead of a column of
-                identical "Unassigned" rows. */}
-            {txn.payeeId ? name.payee(txn.payeeId) : txn.note || name.category(txn.categoryId)}
-            {txn.voided ? ' · voided' : ''}
+          <div className="flex items-center gap-2">
+            <span className="truncate font-medium">{primary}</span>
+            {kind !== 'expense' && (
+              <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-accent uppercase">
+                {kind === 'onbehalf' ? 'On behalf' : 'Repay'}
+              </span>
+            )}
+            {txn.voided ? <span className="shrink-0 text-xs text-muted">voided</span> : null}
           </div>
-          <div className="truncate text-xs text-muted">
-            {formatDate(txn.date)}
-            {txn.payeeId ? ` · ${name.category(txn.categoryId)}` : ' · no payee'} ·{' '}
-            {name.source(txn.sourceId)}
-          </div>
+          <div className="truncate text-xs text-muted">{secondary}</div>
         </div>
         <span className={`shrink-0 font-semibold ${txn.voided ? 'line-through' : ''}`}>
           <Money paise={txn.amount} />
@@ -304,36 +351,61 @@ function TxnRow({
 
       {open && (
         <div className="space-y-3 border-t border-line bg-ground/50 px-4 py-3">
-          <FieldGroup label="Paid to" hint="Set this on imported rows that arrived without a payee.">
-            <ComboBox
-              options={payees.filter((p) => !p.archived).map((p) => ({ id: p.id, name: p.name, sub: p.role }))}
-              value={payeeId}
-              onChange={setPayeeId}
-              onCreate={createPayee}
-              allowClear
-              placeholder="Mestri, electrician, supplier…"
-            />
-          </FieldGroup>
+          {showFronter && (
+            <FieldGroup label="Paid by" hint="Who fronted the money on your behalf.">
+              <ComboBox
+                options={payees.filter((p) => !p.archived).map((p) => ({ id: p.id, name: p.name, sub: p.role }))}
+                value={fronterId}
+                onChange={setFronterId}
+                onCreate={createPayee}
+                placeholder="Mestri, partner, relative…"
+              />
+            </FieldGroup>
+          )}
 
-          <FieldGroup label="For what">
-            <ComboBox
-              options={categories.map((c) => ({ id: c.id, name: c.name }))}
-              value={categoryId}
-              onChange={(id) => id && setCategoryId(id)}
-              onCreate={createCategoryByName}
-              placeholder="Permissions, masonry, cement…"
-            />
-          </FieldGroup>
+          {showPayee && (
+            <FieldGroup
+              label={kind === 'settlement' ? 'Repaid to' : 'Paid to'}
+              hint={
+                kind === 'settlement'
+                  ? 'The person you paid back.'
+                  : 'Set this on imported rows that arrived without a payee.'
+              }
+            >
+              <ComboBox
+                options={payees.filter((p) => !p.archived).map((p) => ({ id: p.id, name: p.name, sub: p.role }))}
+                value={payeeId}
+                onChange={setPayeeId}
+                onCreate={createPayee}
+                allowClear={kind !== 'settlement'}
+                placeholder="Mestri, electrician, supplier…"
+              />
+            </FieldGroup>
+          )}
 
-          <FieldGroup label="Paid from">
-            <ComboBox
-              options={sources.filter((s) => !s.archived).map((s) => ({ id: s.id, name: s.name, sub: s.type }))}
-              value={sourceId}
-              onChange={(id) => id && setSourceId(id)}
-              onCreate={createSourceByName}
-              placeholder="Cash, SBI, GPay…"
-            />
-          </FieldGroup>
+          {showCategory && (
+            <FieldGroup label="For what">
+              <ComboBox
+                options={categories.map((c) => ({ id: c.id, name: c.name }))}
+                value={categoryId}
+                onChange={(id) => id && setCategoryId(id)}
+                onCreate={createCategoryByName}
+                placeholder="Permissions, masonry, cement…"
+              />
+            </FieldGroup>
+          )}
+
+          {showSource && (
+            <FieldGroup label={kind === 'settlement' ? 'Repaid from' : 'Paid from'}>
+              <ComboBox
+                options={sources.filter((s) => !s.archived).map((s) => ({ id: s.id, name: s.name, sub: s.type }))}
+                value={sourceId}
+                onChange={(id) => id && setSourceId(id)}
+                onCreate={createSourceByName}
+                placeholder="Cash, SBI, GPay…"
+              />
+            </FieldGroup>
+          )}
 
           <FieldGroup label="Property">
             <ComboBox

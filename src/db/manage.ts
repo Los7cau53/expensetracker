@@ -240,7 +240,14 @@ export async function deleteFundIn(fundInId: Id): Promise<void> {
 // --- payees ---------------------------------------------------------------
 
 export async function payeeUsage(payeeId: Id): Promise<Usage> {
-  return usage(await db.txns.where('payeeId').equals(payeeId).count())
+  // A person can be referenced two ways: as who was paid (`payeeId`) or as who
+  // fronted money (`fronterId`). Both must block a delete, or removing them
+  // would orphan the on-behalf rows that name them.
+  const [paidCount, frontedCount] = await Promise.all([
+    db.txns.where('payeeId').equals(payeeId).count(),
+    db.txns.where('fronterId').equals(payeeId).count(),
+  ])
+  return usage(paidCount + frontedCount)
 }
 
 export async function updatePayee(
@@ -282,10 +289,16 @@ export async function mergePayees(fromId: Id, intoId: Id): Promise<{ movedTxns: 
     const from = await db.payees.get(fromId)
     const into = await db.payees.get(intoId)
     if (!from || !into) throw new Error('One of those payees no longer exists.')
-    const movedTxns = await db.txns.where('payeeId').equals(fromId).modify({ payeeId: intoId })
+    // Move both the money paid to them and the money they fronted, so no
+    // on-behalf row is left pointing at the payee about to be deleted.
+    const movedPaid = await db.txns.where('payeeId').equals(fromId).modify({ payeeId: intoId })
+    const movedFronted = await db.txns
+      .where('fronterId')
+      .equals(fromId)
+      .modify({ fronterId: intoId })
     await db.payees.delete(fromId)
     await recordDeletion('payees', [fromId])
-    return { movedTxns }
+    return { movedTxns: movedPaid + movedFronted }
   })
 }
 

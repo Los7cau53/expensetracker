@@ -1,8 +1,8 @@
 import type { Id } from './ids'
-import { db } from './schema'
+import { db, isExpenseLike, txnKind } from './schema'
 import type { Paise } from '../lib/money'
 import { monthOf, type DateStr } from '../lib/date'
-import { sum } from './queries'
+import { PAID_BY_OTHERS, PAID_BY_OTHERS_ID, sum } from './queries'
 
 export interface SummaryFilter {
   projectId?: Id
@@ -34,6 +34,11 @@ export interface SummaryData {
   byPayee: (Slice & { role: string })[]
   byProject: Slice[]
   byRole: { role: string; total: Paise }[]
+
+  /** Everything still outstanding to people who fronted money, all-time. */
+  totalOwed: Paise
+  /** Who that is owed to, largest first. */
+  owedByFronter: (Slice & { role: string })[]
 }
 
 /**
@@ -53,8 +58,14 @@ export async function summarise(filter: SummaryFilter = {}): Promise<SummaryData
   const inRange = (d: DateStr) =>
     (!filter.from || d >= filter.from) && (!filter.to || d <= filter.to)
 
+  // Spend analytics are over expense-like rows only. A `settlement` moves cash
+  // to repay a fronter but is not a fresh cost — the `onbehalf` row already
+  // recognised it — so counting it here would double the spend.
   const txns = allTxns.filter(
-    (t) => (!filter.projectId || t.projectId === filter.projectId) && inRange(t.date),
+    (t) =>
+      isExpenseLike(t) &&
+      (!filter.projectId || t.projectId === filter.projectId) &&
+      inRange(t.date),
   )
 
   // Opening balances belong to a source, not to a project or a date window, so
@@ -118,11 +129,46 @@ export async function summarise(filter: SummaryFilter = {}): Promise<SummaryData
 
   const roleMap = new Map<string, Paise>()
   for (const t of txns) {
-    const role = t.payeeId ? payeeById.get(t.payeeId)?.role ?? 'other' : 'unassigned'
+    // On-behalf spend is attributed to the fronter's role, everything else to
+    // the payee's, so a person's trade reads the same however they were paid.
+    const personId = txnKind(t) === 'onbehalf' ? t.fronterId : t.payeeId
+    const role = personId ? payeeById.get(personId)?.role ?? 'other' : 'unassigned'
     roleMap.set(role, (roleMap.get(role) ?? 0) + t.amount)
   }
 
   const payeeTotals = group((t) => t.payeeId)
+
+  // Source breakdown: real sources from their rows, plus a single line for the
+  // on-behalf spend, which has no source of ours behind it.
+  const bySource = toSlices(group((t) => t.sourceId), srcName, 'Unknown source')
+  const frontedInScope = sum(txns.filter((t) => txnKind(t) === 'onbehalf').map((t) => t.amount))
+  if (frontedInScope !== 0) {
+    bySource.push({ id: PAID_BY_OTHERS_ID, name: PAID_BY_OTHERS, total: frontedInScope })
+    bySource.sort((a, b) => b.total - a.total)
+  }
+
+  // What is still owed is a live balance, so it ignores the date range (a debt
+  // from before the window is still a debt) and every kind, not just the
+  // filtered spend rows. It respects the project filter when one is set.
+  const owedRows = allTxns.filter((t) => !filter.projectId || t.projectId === filter.projectId)
+  const owedMap = new Map<Id, Paise>()
+  for (const t of owedRows) {
+    if (txnKind(t) === 'onbehalf' && t.fronterId) {
+      owedMap.set(t.fronterId, (owedMap.get(t.fronterId) ?? 0) + t.amount)
+    } else if (txnKind(t) === 'settlement' && t.payeeId) {
+      owedMap.set(t.payeeId, (owedMap.get(t.payeeId) ?? 0) - t.amount)
+    }
+  }
+  const owedByFronter = [...owedMap.entries()]
+    .filter(([, owed]) => owed > 0)
+    .map(([id, owed]) => ({
+      id,
+      name: payeeById.get(id)?.name ?? 'Unknown',
+      role: payeeById.get(id)?.role ?? 'other',
+      total: owed,
+    }))
+    .sort((a, b) => b.total - a.total)
+  const totalOwed = sum(owedByFronter.map((r) => r.total))
 
   return {
     spent,
@@ -137,7 +183,7 @@ export async function summarise(filter: SummaryFilter = {}): Promise<SummaryData
       .map(([month, total]) => ({ month, total }))
       .sort((a, b) => a.month.localeCompare(b.month)),
     byCategory: toSlices(group((t) => t.categoryId), catName, 'Uncategorised'),
-    bySource: toSlices(group((t) => t.sourceId), srcName, 'Unknown source'),
+    bySource,
     byPayee: [...payeeTotals.entries()]
       .map(([id, total]) => ({
         id,
@@ -150,6 +196,8 @@ export async function summarise(filter: SummaryFilter = {}): Promise<SummaryData
     byRole: [...roleMap.entries()]
       .map(([role, total]) => ({ role, total }))
       .sort((a, b) => b.total - a.total),
+    totalOwed,
+    owedByFronter,
   }
 }
 

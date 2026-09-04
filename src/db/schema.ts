@@ -24,6 +24,24 @@ export type PayeeRole = (typeof PAYEE_ROLES)[number]
 export const PROJECT_STATUSES = ['active', 'onhold', 'done'] as const
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
 
+/**
+ * What a transaction *is*, so the ledger can separate recognising a cost from
+ * moving cash.
+ *
+ * - `expense`    — an ordinary payment: money out of a source, against a cost
+ *                  head. This is the default and what every legacy row (which
+ *                  has no `kind`) is treated as.
+ * - `onbehalf`   — someone fronted the money for a cost head on your behalf.
+ *                  It recognises the cost (so the head total is right) and
+ *                  records a debt to that person, but touches no source of
+ *                  yours — the cash was theirs, not from your accounts.
+ * - `settlement` — repaying the person who fronted. It moves real money out of
+ *                  a source and clears the debt, but is NOT a fresh cost, so it
+ *                  never counts toward a cost head again.
+ */
+export const TXN_KINDS = ['expense', 'onbehalf', 'settlement'] as const
+export type TxnKind = (typeof TXN_KINDS)[number]
+
 /** IndexedDB cannot index booleans, so flags are stored as 0 | 1. */
 export type Flag = 0 | 1
 
@@ -81,9 +99,24 @@ export interface Txn {
   date: DateStr
   projectId: Id
   amount: Paise
-  sourceId: Id
+  /**
+   * Absent means a legacy/ordinary `expense`. Read through `txnKind()` rather
+   * than checking this directly, so the default is applied in one place.
+   */
+  kind?: TxnKind
+  /**
+   * The source cash left. Present for `expense` and `settlement`; absent for
+   * `onbehalf`, whose money came from the fronter, not from an account of ours.
+   */
+  sourceId?: Id
   payeeId?: Id
-  categoryId: Id
+  /** The person who fronted the money. Only set on `onbehalf` rows. */
+  fronterId?: Id
+  /**
+   * The cost head. Present for `expense` and `onbehalf`; absent on
+   * `settlement`, which repays a debt rather than incurring a fresh cost.
+   */
+  categoryId?: Id
   note?: string
   refNo?: string
   importBatchId?: Id
@@ -91,6 +124,22 @@ export interface Txn {
   voidedAt?: number
   createdAt: number
   updatedAt: number
+}
+
+/** The effective kind of a transaction, defaulting legacy rows to `expense`. */
+export function txnKind(t: Pick<Txn, 'kind'>): TxnKind {
+  return t.kind ?? 'expense'
+}
+
+/** Counts toward cost heads and net spend: an ordinary or on-behalf expense. */
+export function isExpenseLike(t: Pick<Txn, 'kind'>): boolean {
+  const k = txnKind(t)
+  return k === 'expense' || k === 'onbehalf'
+}
+
+/** A repayment to someone who fronted money: moves cash, not a fresh cost. */
+export function isSettlement(t: Pick<Txn, 'kind'>): boolean {
+  return txnKind(t) === 'settlement'
 }
 
 /**
@@ -178,6 +227,15 @@ db.version(1).stores({
   importBatches: 'id, importedAt',
   settings: 'key',
   tombstones: 'id, table, deletedAt',
+})
+
+// v2 adds `kind` and `fronterId` to transactions. Both are additive index-only
+// changes — Dexie rebuilds the indexes and needs no data migration, and rows
+// written before this stay `expense` (a missing `kind`) with no fronter.
+db.version(2).stores({
+  txns:
+    'id, date, projectId, sourceId, payeeId, fronterId, categoryId, voided, kind, importBatchId, ' +
+    '[projectId+date], [sourceId+voided], [payeeId+voided], [projectId+voided]',
 })
 
 /**
