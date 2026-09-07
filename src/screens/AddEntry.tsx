@@ -5,8 +5,9 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { ComboBox } from '../components/ComboBox'
 import { DateField } from '../components/DateField'
 import { ScreenshotReader } from '../components/ScreenshotReader'
-import { Button, Field, FieldGroup, Screen, Select, TextInput } from '../components/ui'
-import { db, PAYEE_ROLES, type PayeeRole, type TxnKind } from '../db/schema'
+import { PayeeRolePicker } from '../components/PayeeRolePicker'
+import { Button, Field, FieldGroup, Screen, TextInput } from '../components/ui'
+import { db, type PayeeRole, type TxnKind } from '../db/schema'
 import { todayStr } from '../lib/date'
 import {
   createCategoryByName,
@@ -391,15 +392,13 @@ export default function AddEntry() {
         )}
 
         {kind === 'expense' && selectedPayee?.role === 'other' && (
-          <Field label={`What does ${selectedPayee.name} do?`} hint="Sets their role for role-wise reports.">
-            <Select defaultValue="other" onChange={(e) => void setPayeeRole(e.target.value as PayeeRole)}>
-              {PAYEE_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <FieldGroup label={`What does ${selectedPayee.name} do?`} hint="Sets their role for role-wise reports.">
+            <PayeeRolePicker
+              roles={payees.map((payee) => payee.role)}
+              value={selectedPayee.role}
+              onChange={(role) => void setPayeeRole(role)}
+            />
+          </FieldGroup>
         )}
 
         {needsCategory && (

@@ -2,15 +2,16 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ManagePanel, Notice } from '../components/ManagePanel'
+import { PayeeRolePicker } from '../components/PayeeRolePicker'
 import {
   Bar,
   Button,
   Card,
   Empty,
   Field,
+  FieldGroup,
   Money,
   Screen,
-  Select,
   Stat,
   TextInput,
 } from '../components/ui'
@@ -23,7 +24,7 @@ import {
   setPayeeArchived,
   updatePayee,
 } from '../db/manage'
-import { db, PAYEE_ROLES, txnKind, type Payee, type PayeeRole, type Txn } from '../db/schema'
+import { db, txnKind, type Payee, type PayeeRole, type Txn } from '../db/schema'
 import { formatDate } from '../lib/date'
 
 /** One payee's full ledger, split by property. */
@@ -104,6 +105,7 @@ export default function PayeeDetail() {
         {editing && (
           <EditPayeeForm
             payee={payee}
+            roles={targets.map((target) => target.role)}
             onDone={(m) => {
               setEditing(false)
               setStatus(m)
@@ -225,10 +227,12 @@ export default function PayeeDetail() {
 
 function EditPayeeForm({
   payee,
+  roles,
   onDone,
   onError,
 }: {
   payee: Payee
+  roles: PayeeRole[]
   onDone: (msg: string) => void
   onError: (msg: string) => void
 }) {
@@ -252,13 +256,9 @@ function EditPayeeForm({
         <TextInput value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Role" hint="Drives the role-wise breakdowns.">
-          <Select value={role} onChange={(e) => setRole(e.target.value as PayeeRole)}>
-            {PAYEE_ROLES.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </Select>
-        </Field>
+        <FieldGroup label="Role" hint="Drives the role-wise breakdowns.">
+          <PayeeRolePicker roles={roles} value={role} onChange={setRole} />
+        </FieldGroup>
         <Field label="Phone">
           <TextInput value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} />
         </Field>

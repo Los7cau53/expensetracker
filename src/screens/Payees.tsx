@@ -2,9 +2,10 @@ import type { Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button, Card, Empty, Field, Money, Screen, Select, Stat, TextInput } from '../components/ui'
+import { PayeeRolePicker } from '../components/PayeeRolePicker'
+import { Button, Card, Empty, Field, FieldGroup, Money, Screen, Select, Stat, TextInput } from '../components/ui'
 import { payeeTotals, sum } from '../db/queries'
-import { db, PAYEE_ROLES, type PayeeRole } from '../db/schema'
+import { db, payeeRoleOptions, type PayeeRole } from '../db/schema'
 import { formatDate } from '../lib/date'
 import { usePref } from '../lib/prefs'
 
@@ -17,6 +18,7 @@ export default function Payees() {
   const projects = useLiveQuery(() => db.projects.toArray(), [], [])
   const totals = useLiveQuery(() => payeeTotals(projectId), [projectId], [])
 
+  const roles = payeeRoleOptions(totals.map((t) => t.payee.role))
   const visible = totals
     .filter((t) => (roleFilter ? t.payee.role === roleFilter : true))
     // Someone with no payments is noise here; they still exist for the picker.
@@ -61,14 +63,14 @@ export default function Payees() {
           <Field label="Role">
             <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as PayeeRole | '')}>
               <option value="">All roles</option>
-              {PAYEE_ROLES.map((r) => (
+              {roles.map((r) => (
                 <option key={r} value={r}>{r}</option>
               ))}
             </Select>
           </Field>
         </div>
 
-        {adding && <NewPayeeForm onDone={() => setAdding(false)} />}
+        {adding && <NewPayeeForm roles={roles} onDone={() => setAdding(false)} />}
 
         <p className="px-1 text-xs text-muted">
           Tap a payee to rename them, fix their role, merge duplicates together or archive them.
@@ -113,7 +115,7 @@ export default function Payees() {
   )
 }
 
-function NewPayeeForm({ onDone }: { onDone: () => void }) {
+function NewPayeeForm({ roles, onDone }: { roles: PayeeRole[]; onDone: () => void }) {
   const [name, setName] = useState('')
   const [role, setRole] = useState<PayeeRole>('mestri')
   const [phone, setPhone] = useState('')
@@ -136,13 +138,9 @@ function NewPayeeForm({ onDone }: { onDone: () => void }) {
         <TextInput value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="Ramesh mestri" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Role">
-          <Select value={role} onChange={(e) => setRole(e.target.value as PayeeRole)}>
-            {PAYEE_ROLES.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </Select>
-        </Field>
+        <FieldGroup label="Role">
+          <PayeeRolePicker roles={roles} value={role} onChange={setRole} />
+        </FieldGroup>
         <Field label="Phone">
           <TextInput value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="Optional" />
         </Field>

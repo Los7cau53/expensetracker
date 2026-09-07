@@ -505,6 +505,28 @@ describe('creating a source', () => {
   })
 })
 
+describe('creating a payee role', () => {
+  it('adds a custom role while creating a payee', async () => {
+    const user = userEvent.setup()
+    renderApp('/payees')
+    await screen.findByRole('heading', { name: 'Paid to' })
+
+    await user.click(screen.getByRole('button', { name: 'New payee' }))
+    await user.type(await screen.findByPlaceholderText('Ramesh mestri'), 'Ravi')
+
+    const role = within(screen.getByRole('group', { name: 'Role' }))
+    await user.click(role.getByRole('button', { name: 'Change' }))
+    await user.type(role.getByPlaceholderText('Pick or add a role…'), 'roofer')
+    await user.click(await role.findByRole('button', { name: /Add “roofer”/ }))
+    await user.click(screen.getByRole('button', { name: 'Add payee' }))
+
+    await waitFor(async () => {
+      expect((await db.payees.where('name').equals('Ravi').first())?.role).toBe('roofer')
+    })
+    expect(await screen.findByRole('option', { name: 'roofer' })).toBeTruthy()
+  })
+})
+
 describe('finding the customisation screens', () => {
   it('puts them at the top of Settings, not buried under backup', async () => {
     renderApp('/settings')

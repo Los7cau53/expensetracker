@@ -19,7 +19,16 @@ export const PAYEE_ROLES = [
   'professional',
   'other',
 ] as const
-export type PayeeRole = (typeof PAYEE_ROLES)[number]
+export type PayeeRole = string
+
+export function payeeRoleOptions(roles: PayeeRole[] = []): PayeeRole[] {
+  const unique = new Map<string, PayeeRole>()
+  for (const role of [...PAYEE_ROLES, ...roles]) {
+    const trimmed = role.trim()
+    if (trimmed && !unique.has(trimmed.toLowerCase())) unique.set(trimmed.toLowerCase(), trimmed)
+  }
+  return [...unique.values()]
+}
 
 export const PROJECT_STATUSES = ['active', 'onhold', 'done'] as const
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
