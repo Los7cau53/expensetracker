@@ -72,7 +72,7 @@ export async function sourceBalances(projectId?: Id): Promise<SourceBalance[]> {
 
 export interface PayeeTotal {
   payee: Payee
-  /** Cash that reached this payee: ordinary payments plus repayments to them. */
+  /** Cash that reached this payee: direct, on-behalf and repayment payments. */
   total: Paise
   txnCount: number
   lastPaid?: DateStr
@@ -89,9 +89,9 @@ export interface PayeeTotal {
  * Answers "how much has this person been paid, on which property, and what do
  * I still owe them for money they fronted".
  *
- * Cash paid to a payee (`total`) is ordinary `expense` payments plus
- * `settlement` repayments — both carry `payeeId`. What they fronted is the
- * `onbehalf` rows that name them as `fronterId`.
+ * Cash paid to a payee (`total`) includes direct, on-behalf and repayment
+ * payments — each carries `payeeId`. What they fronted is the `onbehalf` rows
+ * that name them as `fronterId`.
  */
 export async function payeeTotals(projectId?: Id): Promise<PayeeTotal[]> {
   const [payees, txns] = await Promise.all([db.payees.toArray(), live().toArray()])
@@ -187,15 +187,10 @@ export async function projectSummary(projectId: Id): Promise<ProjectSummary | nu
       .map(([id, total]) => ({ id, name: catName.get(id) ?? 'Uncategorised', total }))
       .sort((a, b) => b.total - a.total),
     bySource: bySource.sort((a, b) => b.total - a.total),
-    byPayeeRole: groupSumBy(txns, (t) =>
-      txnKind(t) === 'onbehalf'
-        ? t.fronterId
-          ? roleOf.get(t.fronterId) ?? 'other'
-          : 'other'
-        : t.payeeId
-          ? roleOf.get(t.payeeId) ?? 'other'
-          : 'unassigned',
-    )
+    byPayeeRole: groupSumBy(txns, (t) => {
+      const payeeId = txnKind(t) === 'onbehalf' ? t.payeeId ?? t.fronterId : t.payeeId
+      return payeeId ? roleOf.get(payeeId) ?? 'other' : 'unassigned'
+    })
       .map(([role, total]) => ({ role, total }))
       .sort((a, b) => b.total - a.total),
     byMonth: groupSumBy(txns, (t) => monthOf(t.date))

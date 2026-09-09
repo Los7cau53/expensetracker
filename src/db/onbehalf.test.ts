@@ -56,6 +56,24 @@ describe('on-behalf spend and repayment', () => {
     expect(s.owedByFronter[0].total).toBe(FIVE_K)
   })
 
+  it('attributes recipient totals and role reports to who received the money', async () => {
+    const { plot, x, bore } = await fixture()
+    const contractor = (await db.payees.add({
+      name: 'Borewell Contractor', role: 'supplier', archived: 0, createdAt: 1,
+    } as never)) as string
+
+    await db.txns.add({
+      kind: 'onbehalf', date: '2026-01-10', projectId: plot, payeeId: contractor,
+      fronterId: x, categoryId: bore, amount: FIVE_K, voided: 0, createdAt: 1, updatedAt: 1,
+    } as never)
+
+    const recipient = (await payeeTotals()).find((t) => t.payee.id === contractor)!
+    expect(recipient.total).toBe(FIVE_K)
+    expect(recipient.fronted).toBe(0)
+    expect((await summarise()).byRole.find((r) => r.role === 'supplier')?.total).toBe(FIVE_K)
+    expect((await projectSummary(plot))!.byPayeeRole.find((r) => r.role === 'supplier')?.total).toBe(FIVE_K)
+  })
+
   it('a repayment clears the debt and moves cash, but never re-counts the head', async () => {
     const { plot, bank, x, bore } = await fixture()
 

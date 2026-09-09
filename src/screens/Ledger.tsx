@@ -259,14 +259,16 @@ function TxnRow({
 
   const showSource = kind !== 'onbehalf'
   const showCategory = kind !== 'settlement'
-  const showPayee = kind !== 'onbehalf'
+  const showPayee = true
   const showFronter = kind === 'onbehalf'
 
   // How the collapsed row reads, per kind. Imported history often has no payee,
   // so an expense falls back to its note or cost head to stay scannable.
   const primary =
     kind === 'onbehalf'
-      ? name.payee(txn.fronterId)
+      ? txn.payeeId
+        ? name.payee(txn.payeeId)
+        : name.payee(txn.fronterId)
       : kind === 'settlement'
         ? `Repaid ${name.payee(txn.payeeId)}`
         : txn.payeeId
@@ -274,7 +276,7 @@ function TxnRow({
           : txn.note || name.category(txn.categoryId)
   const secondary =
     kind === 'onbehalf'
-      ? `${formatDate(txn.date)} · fronted · ${name.category(txn.categoryId)}`
+      ? `${formatDate(txn.date)} · paid by ${name.payee(txn.fronterId)} · ${name.category(txn.categoryId)}`
       : kind === 'settlement'
         ? `${formatDate(txn.date)} · repayment · ${name.source(txn.sourceId)}`
         : `${formatDate(txn.date)}${
@@ -369,7 +371,9 @@ function TxnRow({
               hint={
                 kind === 'settlement'
                   ? 'The person you paid back.'
-                  : 'Set this on imported rows that arrived without a payee.'
+                  : kind === 'onbehalf'
+                    ? 'Who received the money from the person paying on your behalf.'
+                    : 'Set this on imported rows that arrived without a payee.'
               }
             >
               <ComboBox

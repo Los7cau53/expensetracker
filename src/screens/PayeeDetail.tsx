@@ -36,7 +36,7 @@ export default function PayeeDetail() {
   const [error, setError] = useState<string | null>(null)
 
   const payee = useLiveQuery(() => db.payees.get(id), [id])
-  // Money paid to them: ordinary payments and repayments. Both carry payeeId.
+  // Money paid to them: direct, on-behalf and repayment rows all carry payeeId.
   const paidTxns = useLiveQuery(
     () => db.txns.where('[payeeId+voided]').equals([id, 0]).toArray(),
     [id],
@@ -62,7 +62,9 @@ export default function PayeeDetail() {
   const owed = fronted - repaid
 
   // One timeline of every interaction, most recent first.
-  const entries = [...paidTxns, ...frontedTxns].sort((a, b) => b.date.localeCompare(a.date))
+  const entries = [...new Map([...paidTxns, ...frontedTxns].map((t) => [t.id, t])).values()].sort((a, b) =>
+    b.date.localeCompare(a.date),
+  )
 
   const byProject = projects
     .map((p) => ({ project: p, total: sum(paidTxns.filter((t) => t.projectId === p.id).map((t) => t.amount)) }))
@@ -78,7 +80,7 @@ export default function PayeeDetail() {
     const k = txnKind(t)
     if (k === 'onbehalf')
       return {
-        title: `Fronted · ${catName(t.categoryId)}`,
+        title: `${t.fronterId === id ? 'Fronted' : 'Received'} · ${catName(t.categoryId)}`,
         sub: `${formatDate(t.date)} · ${projName(t.projectId)}${t.note ? ` · ${t.note}` : ''}`,
       }
     if (k === 'settlement')

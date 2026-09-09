@@ -1,14 +1,16 @@
 import type { Id } from '../db/ids'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { BackupNag } from '../components/BackupNag'
 import { AreaTimeline, BarList, ChartCard, Columns, StackedBar } from '../components/charts'
 import { Screen, Select } from '../components/ui'
 import { db } from '../db/schema'
+import { PAID_BY_OTHERS_ID, type TxnFilter } from '../db/queries'
 import { summarise, withOther, type SummaryFilter } from '../db/summary'
 import { formatDate, formatMonth, formatMonthShort, todayStr, toDateStr } from '../lib/date'
 import { formatPaise, formatPaiseCompact } from '../lib/money'
-import { usePref } from '../lib/prefs'
+import { usePref, writePref } from '../lib/prefs'
 
 const RANGES = [
   { key: 'all', label: 'All time' },
@@ -27,6 +29,8 @@ function rangeStart(key: RangeKey): string | undefined {
 }
 
 export default function Summary() {
+  const navigate = useNavigate()
+  const [expanded, setExpanded] = useState({ categories: false, sources: false, payees: false })
   // Filters live above every widget and scope all of them, so the numbers agree.
   const [projectId, setProjectId] = usePref<Id | undefined>('summaryProject', undefined)
   const [range, setRange] = usePref<RangeKey>('summaryRange', 'all')
@@ -61,9 +65,43 @@ export default function Summary() {
 
   // Only spend the axis width on a year when the range actually crosses one.
   const spansYears = new Set(byMonth.map((m) => m.month.slice(0, 4))).size > 1
-  const categories = withOther(byCategory, 7)
-  const sources = withOther(bySource, 5)
-  const payeeRows = withOther(byPayee, 7)
+  const categories = expanded.categories ? byCategory : withOther(byCategory, 7)
+  const sources = expanded.sources ? bySource : withOther(bySource, 5)
+  const payeeRows = expanded.payees ? byPayee : withOther(byPayee, 7)
+
+  function openLedger(drilldown: TxnFilter) {
+    writePref<TxnFilter>('ledgerFilter', {
+      projectId,
+      from: filter.from,
+      to: filter.to,
+      ...drilldown,
+    })
+    navigate('/ledger')
+  }
+
+  function openCategory(name: string) {
+    const category = byCategory.find((row) => row.name === name)
+    if (category) openLedger({ categoryId: category.id })
+  }
+
+  function openMonth(month: string) {
+    const [year, monthNumber] = month.split('-').map(Number)
+    openLedger({
+      from: `${month}-01`,
+      to: toDateStr(new Date(year, monthNumber, 0)),
+    })
+  }
+
+  function openSource(name: string) {
+    const source = bySource.find((row) => row.name === name)
+    if (!source) return
+    openLedger(source.id === PAID_BY_OTHERS_ID ? { kind: 'onbehalf' } : { sourceId: source.id, kind: 'expense' })
+  }
+
+  function openPayee(name: string) {
+    const payee = byPayee.find((row) => row.name === name)
+    if (payee) navigate(`/payees/${payee.id}`)
+  }
 
   return (
     <Screen
@@ -188,9 +226,17 @@ export default function Summary() {
                   .slice()
                   .reverse()
                   .map((p) => [formatDate(p.date), formatPaise(p.daily), formatPaise(p.cumulative)]),
+                onRowSelect: (index) => {
+                  const point = timeline.slice().reverse()[index]
+                  openLedger({ from: point.date, to: point.date })
+                },
               }}
             >
-              <AreaTimeline points={timeline} formatDateLabel={formatDate} />
+              <AreaTimeline
+                points={timeline}
+                formatDateLabel={formatDate}
+                onSelect={(point) => openLedger({ from: point.date, to: point.date })}
+              />
             </ChartCard>
 
             <ChartCard
@@ -200,11 +246,13 @@ export default function Summary() {
               table={{
                 columns: ['Month', 'Spent'],
                 rows: byMonth.slice().reverse().map((m) => [formatMonth(m.month), formatPaise(m.total)]),
+                onRowSelect: (index) => openMonth(byMonth.slice().reverse()[index].month),
               }}
             >
               <Columns
                 bars={byMonth.map((m) => ({ key: m.month, label: m.month, value: m.total }))}
                 formatLabel={(k) => formatMonthShort(k, spansYears)}
+                onSelect={(bar) => openMonth(bar.key)}
               />
             </ChartCard>
 
@@ -219,9 +267,18 @@ export default function Summary() {
                   formatPaise(c.total),
                   `${((c.total / (spent || 1)) * 100).toFixed(1)}%`,
                 ]),
+                onRowSelect: (index) => openCategory(byCategory[index].name),
               }}
             >
-              <BarList rows={categories} total={spent} />
+              <BarList
+                rows={categories}
+                total={spent}
+                onSelect={(row) =>
+                  row.isOther
+                    ? setExpanded((value) => ({ ...value, categories: true }))
+                    : openCategory(row.name)
+                }
+              />
             </ChartCard>
 
             <ChartCard
@@ -235,9 +292,17 @@ export default function Summary() {
                   formatPaise(s.total),
                   `${((s.total / (spent || 1)) * 100).toFixed(1)}%`,
                 ]),
+                onRowSelect: (index) => openSource(bySource[index].name),
               }}
             >
-              <StackedBar rows={sources} />
+              <StackedBar
+                rows={sources}
+                onSelect={(row) =>
+                  row.isOther
+                    ? setExpanded((value) => ({ ...value, sources: true }))
+                    : openSource(row.name)
+                }
+              />
             </ChartCard>
 
             <ChartCard
@@ -257,9 +322,19 @@ export default function Summary() {
               table={{
                 columns: ['Payee', 'Role', 'Paid'],
                 rows: byPayee.map((p) => [p.name, p.role, formatPaise(p.total)]),
+                onRowSelect: (index) => openPayee(byPayee[index].name),
               }}
             >
-              <BarList rows={payeeRows} total={spent} unitLabel="of all spending" />
+              <BarList
+                rows={payeeRows}
+                total={spent}
+                unitLabel="of all spending"
+                onSelect={(row) =>
+                  row.isOther
+                    ? setExpanded((value) => ({ ...value, payees: true }))
+                    : openPayee(row.name)
+                }
+              />
             </ChartCard>
 
             {byProject.length > 1 && !projectId && (

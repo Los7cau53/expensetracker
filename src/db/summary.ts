@@ -129,9 +129,9 @@ export async function summarise(filter: SummaryFilter = {}): Promise<SummaryData
 
   const roleMap = new Map<string, Paise>()
   for (const t of txns) {
-    // On-behalf spend is attributed to the fronter's role, everything else to
-    // the payee's, so a person's trade reads the same however they were paid.
-    const personId = txnKind(t) === 'onbehalf' ? t.fronterId : t.payeeId
+    // On-behalf spend uses its recipient's role when known, falling back to the
+    // fronter for older rows that were recorded before recipients were captured.
+    const personId = txnKind(t) === 'onbehalf' ? t.payeeId ?? t.fronterId : t.payeeId
     const role = personId ? payeeById.get(personId)?.role ?? 'other' : 'unassigned'
     roleMap.set(role, (roleMap.get(role) ?? 0) + t.amount)
   }

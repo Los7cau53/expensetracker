@@ -138,6 +138,7 @@ export default function AddEntry() {
       await db.txns.add({
         ...base,
         kind: 'onbehalf',
+        payeeId,
         fronterId,
         categoryId: categoryId!,
       } as never)
@@ -378,8 +379,15 @@ export default function AddEntry() {
           </FieldGroup>
         )}
 
-        {kind === 'expense' && (
-          <FieldGroup label="Paid to" hint="Leave empty for counter payments with no named recipient.">
+        {kind !== 'settlement' && (
+          <FieldGroup
+            label="Paid to"
+            hint={
+              kind === 'onbehalf'
+                ? 'Who received the money from the person paying on your behalf.'
+                : 'Leave empty for counter payments with no named recipient.'
+            }
+          >
             <ComboBox
               options={payees.map((p) => ({ id: p.id, name: p.name, sub: p.role }))}
               value={payeeId}
@@ -391,7 +399,7 @@ export default function AddEntry() {
           </FieldGroup>
         )}
 
-        {kind === 'expense' && selectedPayee?.role === 'other' && (
+        {kind !== 'settlement' && selectedPayee?.role === 'other' && (
           <FieldGroup label={`What does ${selectedPayee.name} do?`} hint="Sets their role for role-wise reports.">
             <PayeeRolePicker
               roles={payees.map((payee) => payee.role)}

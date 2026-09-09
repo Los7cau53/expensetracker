@@ -6,9 +6,11 @@ import { HashRouter } from 'react-router-dom'
 import App from '../App'
 import { db } from '../db/schema'
 import { seedIfEmpty } from '../db/seed'
-import { sourceBalances } from '../db/queries'
+import { sourceBalances, type TxnFilter } from '../db/queries'
+import { readPref } from '../lib/prefs'
 
 async function freshDb() {
+  localStorage.clear()
   await Promise.all([
     db.projects.clear(),
     db.sources.clear(),
@@ -127,6 +129,39 @@ describe('recording a payment end to end', () => {
   })
 })
 
+describe('recording a payment made on my behalf', () => {
+  it('records both who paid and who received the money', async () => {
+    const user = userEvent.setup()
+    renderApp('/add')
+    await screen.findByRole('heading', { name: 'Add payment' })
+
+    await user.click(screen.getByRole('button', { name: 'Paid on my behalf' }))
+    await user.type(screen.getByLabelText('Amount in rupees'), '5000')
+
+    const paidBy = within(screen.getByRole('group', { name: 'Paid by' }))
+    await user.type(paidBy.getByPlaceholderText('Mestri, partner, relative…'), 'Partner X')
+    await user.click(await paidBy.findByText(/Add “Partner X”/))
+
+    const paidTo = within(screen.getByRole('group', { name: 'Paid to' }))
+    await user.type(paidTo.getByPlaceholderText('Mestri, electrician, supplier…'), 'Borewell Contractor')
+    await user.click(await paidTo.findByText(/Add “Borewell Contractor”/))
+
+    const category = within(screen.getByRole('group', { name: 'For what' }))
+    const categoryBox = category.queryByPlaceholderText('Permissions, masonry, cement…')
+    if (categoryBox) {
+      await user.type(categoryBox, 'Borewell')
+      await user.click(await category.findByRole('button', { name: /Add “Borewell”/ }))
+    }
+    await user.click(screen.getByRole('button', { name: /Save & add another/ }))
+
+    await waitFor(async () => expect(await db.txns.count()).toBe(1))
+    const txn = (await db.txns.toArray())[0]
+    const payees = await db.payees.toArray()
+    expect(payees.find((p) => p.id === txn.fronterId)?.name).toBe('Partner X')
+    expect(payees.find((p) => p.id === txn.payeeId)?.name).toBe('Borewell Contractor')
+  })
+})
+
 describe('backup nag', () => {
   it('appears once there is data and no backup', async () => {
     const [project, source, category] = await Promise.all([
@@ -153,6 +188,221 @@ describe('backup nag', () => {
     renderApp('/')
     await screen.findByRole('heading', { name: 'Summary' })
     expect(screen.queryByText('No backup yet')).toBeNull()
+  })
+})
+
+describe('summary drill-down', () => {
+  const clientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 600 })
+  })
+
+  afterEach(() => {
+    if (clientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', clientWidth)
+    else Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth')
+  })
+
+  it('opens the ledger filtered to the selected cost head', async () => {
+    const user = userEvent.setup()
+    const [project, source, categories] = await Promise.all([
+      db.projects.toArray(),
+      db.sources.toArray(),
+      db.categories.toArray(),
+    ])
+    const now = Date.now()
+    await db.txns.bulkAdd([
+      {
+        date: '2026-08-01', projectId: project[0].id, sourceId: source[0].id,
+        categoryId: categories[0].id, amount: 1_000_00, voided: 0, createdAt: now, updatedAt: now,
+      },
+      {
+        date: '2026-08-02', projectId: project[0].id, sourceId: source[0].id,
+        categoryId: categories[1].id, amount: 2_000_00, voided: 0, createdAt: now, updatedAt: now,
+      },
+    ] as never)
+
+    renderApp('/')
+    const heading = await screen.findByText('Where it went')
+    const card = within(heading.closest('section')!)
+    await user.click(card.getByRole('button', { name: new RegExp(categories[0].name) }))
+
+    expect(await screen.findByRole('heading', { name: 'Ledger' })).toBeTruthy()
+    expect(await screen.findByText('1 entry')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Filter (1)' }))
+    expect((screen.getByRole('combobox', { name: 'For what' }) as HTMLSelectElement).value)
+      .toBe(categories[0].id)
+  })
+
+  it('opens the ledger for the selected month', async () => {
+    const user = userEvent.setup()
+    const [project, source, category] = await Promise.all([
+      db.projects.toArray(), db.sources.toArray(), db.categories.toArray(),
+    ])
+    const now = Date.now()
+    await db.txns.bulkAdd([
+      {
+        date: '2026-08-10', projectId: project[0].id, sourceId: source[0].id,
+        categoryId: category[0].id, amount: 1_000_00, voided: 0, createdAt: now, updatedAt: now,
+      },
+      {
+        date: '2026-09-10', projectId: project[0].id, sourceId: source[0].id,
+        categoryId: category[0].id, amount: 2_000_00, voided: 0, createdAt: now, updatedAt: now,
+      },
+    ] as never)
+
+    renderApp('/')
+    const heading = await screen.findByText('By month')
+    await user.click(within(heading.closest('section')!).getByRole('button', { name: /Aug:/ }))
+
+    expect(await screen.findByText('1 entry')).toBeTruthy()
+    expect(readPref<TxnFilter>('ledgerFilter', {})).toMatchObject({
+      from: '2026-08-01', to: '2026-08-31',
+    })
+  })
+
+  it('opens the ledger filtered to the selected funding source', async () => {
+    const user = userEvent.setup()
+    const [project, sources, category] = await Promise.all([
+      db.projects.toArray(), db.sources.toArray(), db.categories.toArray(),
+    ])
+    const bank = (await db.sources.add({
+      name: 'SBI', type: 'bank', openingBalance: 0, archived: 0, createdAt: Date.now(),
+    } as never)) as string
+    const now = Date.now()
+    await db.txns.bulkAdd([
+      {
+        date: '2026-08-10', projectId: project[0].id, sourceId: sources[0].id,
+        categoryId: category[0].id, amount: 1_000_00, voided: 0, createdAt: now, updatedAt: now,
+      },
+      {
+        date: '2026-08-11', projectId: project[0].id, sourceId: bank,
+        categoryId: category[0].id, amount: 2_000_00, voided: 0, createdAt: now, updatedAt: now,
+      },
+    ] as never)
+
+    renderApp('/')
+    const heading = await screen.findByText('Which source paid')
+    await user.click(within(heading.closest('section')!).getByRole('button', { name: /SBI:/ }))
+
+    expect(await screen.findByText('1 entry')).toBeTruthy()
+    expect(readPref<TxnFilter>('ledgerFilter', {})).toMatchObject({ sourceId: bank, kind: 'expense' })
+  })
+
+  it('opens the ledger for the selected timeline day', async () => {
+    const user = userEvent.setup()
+    const [project, source, category] = await Promise.all([
+      db.projects.toArray(), db.sources.toArray(), db.categories.toArray(),
+    ])
+    const now = Date.now()
+    await db.txns.bulkAdd([
+      {
+        date: '2026-08-10', projectId: project[0].id, sourceId: source[0].id,
+        categoryId: category[0].id, amount: 1_000_00, voided: 0, createdAt: now, updatedAt: now,
+      },
+      {
+        date: '2026-08-11', projectId: project[0].id, sourceId: source[0].id,
+        categoryId: category[0].id, amount: 2_000_00, voided: 0, createdAt: now, updatedAt: now,
+      },
+    ] as never)
+
+    renderApp('/')
+    const heading = await screen.findByText('Spend over time')
+    await user.click(within(heading.closest('section')!).getByRole('button', { name: /Cumulative spend/ }))
+
+    expect(await screen.findByText('1 entry')).toBeTruthy()
+    expect(readPref<TxnFilter>('ledgerFilter', {})).toMatchObject({
+      from: '2026-08-10', to: '2026-08-10',
+    })
+  })
+
+  it('expands Other to show every cost head', async () => {
+    const user = userEvent.setup()
+    const [project, source, categories] = await Promise.all([
+      db.projects.toArray(), db.sources.toArray(), db.categories.toArray(),
+    ])
+    const now = Date.now()
+    await db.txns.bulkAdd(categories.slice(0, 9).map((category, index) => ({
+      date: '2026-08-10', projectId: project[0].id, sourceId: source[0].id,
+      categoryId: category.id, amount: (index + 1) * 100_00, voided: 0,
+      createdAt: now, updatedAt: now,
+    })) as never)
+
+    renderApp('/')
+    const heading = await screen.findByText('Where it went')
+    const card = within(heading.closest('section')!)
+    expect(card.queryByRole('button', { name: new RegExp(categories[0].name) })).toBeNull()
+    await user.click(card.getByRole('button', { name: /Other \(2\)/ }))
+
+    expect(await card.findByRole('button', { name: new RegExp(categories[0].name) })).toBeTruthy()
+    expect(card.queryByRole('button', { name: /Other \(2\)/ })).toBeNull()
+  })
+
+  it('keeps cost-head navigation working in Numbers mode', async () => {
+    const user = userEvent.setup()
+    const [project, source, category] = await Promise.all([
+      db.projects.toArray(), db.sources.toArray(), db.categories.toArray(),
+    ])
+    await db.txns.add({
+      date: '2026-08-10', projectId: project[0].id, sourceId: source[0].id,
+      categoryId: category[0].id, amount: 1_000_00, voided: 0,
+      createdAt: Date.now(), updatedAt: Date.now(),
+    } as never)
+
+    renderApp('/')
+    const heading = await screen.findByText('Where it went')
+    const card = within(heading.closest('section')!)
+    await user.click(card.getByRole('button', { name: 'Numbers' }))
+    await user.click(card.getByRole('row', { name: new RegExp(category[0].name) }))
+
+    expect(await screen.findByRole('heading', { name: 'Ledger' })).toBeTruthy()
+    expect(readPref<TxnFilter>('ledgerFilter', {})).toMatchObject({ categoryId: category[0].id })
+  })
+
+  it('expands Other to show every funding source', async () => {
+    const user = userEvent.setup()
+    const [project, category] = await Promise.all([db.projects.toArray(), db.categories.toArray()])
+    await db.sources.bulkAdd(Array.from({ length: 6 }, (_, index) => ({
+      name: `Bank ${index + 1}`, type: 'bank', openingBalance: 0, archived: 0, createdAt: Date.now(),
+    })) as never)
+    const sources = await db.sources.toArray()
+    const now = Date.now()
+    await db.txns.bulkAdd(sources.map((source, index) => ({
+      date: '2026-08-10', projectId: project[0].id, sourceId: source.id,
+      categoryId: category[0].id, amount: (index + 1) * 100_00, voided: 0,
+      createdAt: now, updatedAt: now,
+    })) as never)
+
+    renderApp('/')
+    const heading = await screen.findByText('Which source paid')
+    const card = within(heading.closest('section')!)
+    const smallest = sources[0].name
+    expect(card.queryByRole('button', { name: new RegExp(`${smallest}:`) })).toBeNull()
+    await user.click(card.getByRole('button', { name: /Other \(2\)/ }))
+
+    expect(await card.findByRole('button', { name: new RegExp(`${smallest}:`) })).toBeTruthy()
+    expect(card.queryByRole('button', { name: /Other \(2\)/ })).toBeNull()
+  })
+
+  it('opens the selected recipient’s payee page', async () => {
+    const user = userEvent.setup()
+    const [project, source, category] = await Promise.all([
+      db.projects.toArray(), db.sources.toArray(), db.categories.toArray(),
+    ])
+    const payeeId = (await db.payees.add({
+      name: 'Ramesh Mestri', role: 'mestri', archived: 0, createdAt: Date.now(),
+    } as never)) as string
+    await db.txns.add({
+      date: '2026-08-10', projectId: project[0].id, sourceId: source[0].id,
+      categoryId: category[0].id, payeeId, amount: 1_000_00, voided: 0,
+      createdAt: Date.now(), updatedAt: Date.now(),
+    } as never)
+
+    renderApp('/')
+    const heading = await screen.findByRole('heading', { name: 'Paid to', level: 2 })
+    await user.click(within(heading.closest('section')!).getByRole('button', { name: /Ramesh Mestri/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Ramesh Mestri', level: 1 })).toBeTruthy()
   })
 })
 

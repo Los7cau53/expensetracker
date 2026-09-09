@@ -19,7 +19,7 @@ export function ChartCard({
 }: {
   title: string
   subtitle?: string
-  table: { columns: string[]; rows: (string | number)[][] }
+  table: { columns: string[]; rows: (string | number)[][]; onRowSelect?: (rowIndex: number) => void }
   children: ReactNode
   empty?: boolean
   emptyMessage?: ReactNode
@@ -61,9 +61,11 @@ export function ChartCard({
 export function DataTable({
   columns,
   rows,
+  onRowSelect,
 }: {
   columns: string[]
   rows: (string | number)[][]
+  onRowSelect?: (rowIndex: number) => void
 }) {
   return (
     <div className="-mx-1 max-h-80 overflow-auto">
@@ -82,7 +84,24 @@ export function DataTable({
         </thead>
         <tbody>
           {rows.map((r, ri) => (
-            <tr key={ri} className="border-b border-line/60 last:border-0">
+            <tr
+              key={ri}
+              tabIndex={onRowSelect ? 0 : undefined}
+              onClick={onRowSelect ? () => onRowSelect(ri) : undefined}
+              onKeyDown={
+                onRowSelect
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onRowSelect(ri)
+                      }
+                    }
+                  : undefined
+              }
+              className={`border-b border-line/60 last:border-0 ${
+                onRowSelect ? 'cursor-pointer hover:bg-ground focus-visible:outline-2 focus-visible:outline-accent' : ''
+              }`}
+            >
               {r.map((cell, ci) => (
                 <td
                   key={ci}
@@ -189,10 +208,12 @@ export function AreaTimeline({
   points,
   height = 190,
   formatDateLabel,
+  onSelect,
 }: {
   points: TimelinePoint[]
   height?: number
   formatDateLabel: (d: string) => string
+  onSelect?: (point: TimelinePoint) => void
 }) {
   const [ref, width] = useWidth<HTMLDivElement>()
   const [active, setActive] = useState<number | null>(null)
@@ -248,9 +269,17 @@ export function AreaTimeline({
         <svg
           width={width}
           height={height}
-          role="img"
+          role={onSelect ? 'button' : 'img'}
           aria-label={`Cumulative spend from ${formatDateLabel(points[0].date)} to ${formatDateLabel(points[points.length - 1].date)}`}
           tabIndex={0}
+          onClick={
+            onSelect
+              ? (e) => {
+                  const index = nearest(e.clientX)
+                  if (index !== null) onSelect(points[index])
+                }
+              : undefined
+          }
           onKeyDown={(e) => {
             if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
               e.preventDefault()
@@ -259,6 +288,10 @@ export function AreaTimeline({
                 const next = (p === null ? 0 : p + step)
                 return Math.max(0, Math.min(points.length - 1, next))
               })
+            }
+            if (onSelect && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault()
+              onSelect(points[active ?? points.length - 1])
             }
             if (e.key === 'Escape') setActive(null)
           }}
@@ -394,10 +427,12 @@ export function Columns({
   bars,
   height = 170,
   formatLabel,
+  onSelect,
 }: {
   bars: { label: string; value: number; key: string }[]
   height?: number
   formatLabel: (k: string) => string
+  onSelect?: (bar: { label: string; value: number; key: string }) => void
 }) {
   const [ref, width] = useWidth<HTMLDivElement>()
   const [active, setActive] = useState<number | null>(null)
@@ -508,11 +543,22 @@ export function Columns({
                   tabIndex={0}
                   role="button"
                   aria-label={`${formatLabel(b.key)}: ${formatPaise(b.value)}`}
+                  onClick={onSelect ? () => onSelect(b) : undefined}
+                  onKeyDown={
+                    onSelect
+                      ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            onSelect(b)
+                          }
+                        }
+                      : undefined
+                  }
                   onPointerEnter={() => setActive(i)}
                   onPointerLeave={() => setActive(null)}
                   onFocus={() => setActive(i)}
                   onBlur={() => setActive(null)}
-                  className="outline-none focus-visible:stroke-2"
+                  className={`outline-none focus-visible:stroke-2 ${onSelect ? 'cursor-pointer' : ''}`}
                 />
               </g>
             )
@@ -567,10 +613,12 @@ export function BarList({
   rows,
   total,
   unitLabel = 'of total',
+  onSelect,
 }: {
   rows: BarRow[]
   total: number
   unitLabel?: string
+  onSelect?: (row: BarRow) => void
 }) {
   const [active, setActive] = useState<string | null>(null)
 
@@ -591,12 +639,26 @@ export function BarList({
           <li
             key={r.name}
             tabIndex={0}
+            role={onSelect ? 'button' : undefined}
+            onClick={onSelect ? () => onSelect(r) : undefined}
+            onKeyDown={
+              onSelect
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onSelect(r)
+                    }
+                  }
+                : undefined
+            }
             onPointerEnter={() => setActive(r.name)}
             onPointerLeave={() => setActive(null)}
             onFocus={() => setActive(r.name)}
             onBlur={() => setActive(null)}
             // The whole row is the hit target, comfortably past the 24px floor.
-            className="cursor-default rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            className={`rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+              onSelect ? 'cursor-pointer hover:opacity-80' : 'cursor-default'
+            }`}
           >
             <div className="flex items-baseline justify-between gap-3">
               <span className="min-w-0 flex-1 truncate text-sm">{r.name}</span>
@@ -641,12 +703,19 @@ export function BarList({
  * pairs each hue with its name and value, which is also the relief for the
  * lighter slots that sit below 3:1 on this surface.
  */
-export function StackedBar({ rows }: { rows: BarRow[] }) {
+export function StackedBar({
+  rows,
+  onSelect,
+}: {
+  rows: BarRow[]
+  onSelect?: (row: BarRow) => void
+}) {
   const [active, setActive] = useState<string | null>(null)
 
   // A stack only reads as part-to-whole when every part is positive.
   const parts = rows.filter((r) => r.total > 0)
   const total = parts.reduce((a, r) => a + r.total, 0)
+  const activePart = parts.find((part) => part.name === active)
   if (total === 0) return null
 
   const colorFor = (r: BarRow, i: number) =>
@@ -661,6 +730,17 @@ export function StackedBar({ rows }: { rows: BarRow[] }) {
             tabIndex={0}
             role="button"
             aria-label={`${r.name}: ${formatPaise(r.total)}, ${((r.total / total) * 100).toFixed(1)} percent`}
+            onClick={onSelect ? () => onSelect(r) : undefined}
+            onKeyDown={
+              onSelect
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onSelect(r)
+                    }
+                  }
+                : undefined
+            }
             onPointerEnter={() => setActive(r.name)}
             onPointerLeave={() => setActive(null)}
             onFocus={() => setActive(r.name)}
@@ -670,7 +750,9 @@ export function StackedBar({ rows }: { rows: BarRow[] }) {
               background: colorFor(r, i),
               opacity: active && active !== r.name ? 0.55 : 1,
             }}
-            className="min-w-1 outline-none transition-opacity first:rounded-l-md last:rounded-r-md focus-visible:ring-2 focus-visible:ring-accent/40"
+            className={`min-w-1 outline-none transition-opacity first:rounded-l-md last:rounded-r-md focus-visible:ring-2 focus-visible:ring-accent/40 ${
+              onSelect ? 'cursor-pointer' : ''
+            }`}
           />
         ))}
       </div>
@@ -683,12 +765,10 @@ export function StackedBar({ rows }: { rows: BarRow[] }) {
         }))}
       />
 
-      {active && (
+      {activePart && (
         <p className="mt-2 text-xs text-muted">
-          <span className="tnum font-medium text-ink">
-            {formatPaise(parts.find((p) => p.name === active)!.total)}
-          </span>{' '}
-          from {active}
+          <span className="tnum font-medium text-ink">{formatPaise(activePart.total)}</span>{' '}
+          from {activePart.name}
         </p>
       )}
     </div>
